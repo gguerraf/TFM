@@ -69,28 +69,53 @@ python src/analysis/32_integrity_checks.py
 
 ## Current Status
 
-The improved econometric model has been executed and validated locally. The final improved panel contains 758,013 observations, with 744,666 observations used in the main regression after dropping missing model variables.
+The improved econometric model has been executed in two comparable stages.
 
-Main econometric findings:
+### Previous Improved Specification
 
-- The liquidity channel is positive and statistically significant.
-- The informational spillover channel is positive and statistically significant.
-- The direct baseline propagation term is negative and remains significant with two-way clustered standard errors.
-- The liquidity channel is positive and remains significant with two-way clustered standard errors.
-- The informational spillover channel is positive and remains significant with two-way clustered standard errors.
-- The arbitrage/mispricing channel and the negative-shock asymmetry term are weaker: they are marginal under one-way clustering but not significant under two-way clustering.
+This was the improved model before adding receiver weight, pre-event return correlation and ETF concentration. The panel contained 758,013 observations, with 744,666 observations used in the main regression after dropping missing model variables.
 
-Machine-learning findings:
+Main two-way clustered findings in that version:
+
+- `b1_term`: -0.4638, p=0.0014.
+- `b2_term`: 0.3326, p<0.001.
+- `b4_term`: -2.7383, p=0.2062.
+- `b5_term`: 0.0187, p<0.001.
+- `asym_term`: -0.1410, p=0.1588.
+
+ML results in that version:
 
 - OLS baseline test R2: 0.0002; directional accuracy: 0.5230.
 - LightGBM test R2: 0.0163; directional accuracy: 0.5407.
 - Tanh neural network test R2: 0.0146; directional accuracy: 0.5377.
 
-LightGBM improves over the simple OLS predictive baseline, but the improvement is limited. The feed-forward neural network follows the supervisor's suggestion: fixed `tanh` activation and a modest grid over hidden layers and nodes per layer. Based on the current results, a graph neural network is not yet strongly justified unless a more explicit graph-learning research question is added.
+### Expanded Specification
+
+The latest model adds three additional academic variables: receiver portfolio weight (`w_j`), pre-event return correlation (`Corr_ij_60d`) and ETF concentration (`HHI_etf_t`). The rebuilt panel contains 757,368 observations, with 743,033 observations used in the main regression.
+
+Main two-way clustered findings in the expanded version:
+
+- `b1_term`: -1.2020, p<0.001.
+- `b2_term`: 0.4854, p<0.001.
+- `b4_term`: -3.1222, p=0.1463.
+- `b5_term`: 0.0205, p<0.001.
+- `receiver_weight_term`: 7.5488, p=0.0393.
+- `corr_term`: 2.6345, p<0.001.
+- `hhi_term`: -6.1627, p=0.0014.
+- `asym_term`: -0.0996, p=0.3436.
+
+ML results in the expanded version:
+
+- OLS baseline test R2: 0.0004; directional accuracy: 0.5274.
+- LightGBM test R2: -0.0122; directional accuracy: 0.5449.
+- Tanh neural network test R2: 0.0146; directional accuracy: 0.5473.
+
+The expanded variables improve the academic interpretation of the econometric model, especially through receiver weight, pre-event comovement and ETF concentration. However, they do not clearly improve out-of-sample predictive R2. LightGBM worsens in test R2, while the neural network remains similar in R2 and improves slightly in directional accuracy.
+
+A graph neural network is still not strongly justified unless the thesis explicitly adds a graph-learning research question.
 
 ## Notes on Robustness
 
-The robustness battery includes sign splits, pre/post-COVID periods, per-ETF regressions, top-weight trimming, extreme-value trimming, placebo event assignment, shuffled outcomes and a no-time-fixed-effects specification. The corrected placebo event assignment breaks the link between event shocks and receiver outcomes while preserving ETF-level structure; in the current run the main placebo coefficients lose statistical significance.
+The robustness battery includes sign splits, pre/post-COVID periods, per-ETF regressions, top-weight trimming, extreme-value trimming, placebo event assignment, shuffled outcomes and a no-time-fixed-effects specification. The corrected placebo event assignment breaks the link between event shocks and receiver outcomes while preserving ETF-level structure. In the expanded run, the placebo coefficients lose statistical significance, including the new channels.
 
-See `docs/project_context/results_interpretation.md` for a fuller academic interpretation of the current results.
-
+See `docs/project_context/results_interpretation.md` for a fuller academic interpretation and comparison between the previous and expanded specifications.

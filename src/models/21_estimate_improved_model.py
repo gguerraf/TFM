@@ -84,6 +84,13 @@ SHOCK_THRESHOLD = 1.5
 # Mechanism variable windows
 ILLIQ_WINDOW      = 20
 MISPRICING_WINDOW = 5
+CORR_WINDOW       = 60
+CORR_MIN_OBS      = 30
+
+REQUIRED_PANEL_COLUMNS = {
+    "w_j", "Corr_ij_60d", "HHI_etf_t",
+    "receiver_weight_term", "corr_term", "hhi_term",
+}
 
 # ================================================================================
 # STEP 0: LOAD DATA
@@ -341,6 +348,17 @@ def mispricing_proxy(etf_ret: pd.Series,
     return float(etf_ret.reindex(w).sum() - bench_ret.reindex(w).sum())
 
 
+def pre_event_corr(x: np.ndarray, y: np.ndarray) -> float:
+    mask = np.isfinite(x) & np.isfinite(y)
+    if mask.sum() < CORR_MIN_OBS:
+        return np.nan
+    x = x[mask]
+    y = y[mask]
+    if np.std(x) < 1e-12 or np.std(y) < 1e-12:
+        return np.nan
+    return float(np.corrcoef(x, y)[0, 1])
+
+
 # ================================================================================
 # STEP 3: BUILD OBSERVATION PANEL
 # ================================================================================
@@ -431,13 +449,21 @@ def build_panel(shocks:      pd.DataFrame,
             holdings_cache[t_hold] = holdings_df[holdings_df["atDate"] == t_hold]
         hold_t = holdings_cache[t_hold]
 
-        # Weight of shocked stock i
-        row_i = hold_t[hold_t["symbol"] == stock_i]
-        if row_i.empty:
+        weight_map = (hold_t.drop_duplicates("symbol")
+                      .set_index("symbol")["weight"]
+                      .astype(float))
+        if stock_i not in weight_map.index:
             continue
-        w_i = float(row_i["weight"].iloc[0])
+        w_i = float(weight_map.loc[stock_i])
         if np.isnan(w_i) or w_i <= 0:
             continue
+
+        weights = weight_map.replace([np.inf, -np.inf], np.nan).dropna()
+        weights = weights[weights > 0]
+        if weights.empty or weights.sum() <= 0:
+            continue
+        weights_norm = weights / weights.sum()
+        hhi_etf = float((weights_norm ** 2).sum())
 
         # Mechanism variables at t0
         mispricing = mispricing_proxy(etf_ret, ret_bench, t0)
@@ -445,11 +471,22 @@ def build_panel(shocks:      pd.DataFrame,
         # -- D2: Year-quarter for time fixed effects --
         year_quarter = f"{t0.year}Q{(t0.month - 1) // 3 + 1}"
 
+        corr_dates = ret_stocks.index[ret_stocks.index < t0]
+        corr_window = corr_dates[-CORR_WINDOW:]
+        ret_corr = ret_stocks.loc[corr_window] if len(corr_window) else pd.DataFrame()
+        ri_corr = (ret_corr[stock_i].to_numpy(dtype=float)
+                   if stock_i in ret_corr.columns else np.array([]))
+
         # Co-constituents j != i
         peers = hold_t[hold_t["symbol"] != stock_i]["symbol"].tolist()
 
         for stock_j in peers:
             if stock_j not in ret_stocks.columns:
+                continue
+            if stock_j not in weight_map.index:
+                continue
+            w_j = float(weight_map.loc[stock_j])
+            if np.isnan(w_j) or w_j <= 0:
                 continue
 
             # -- C6: skip if receiver j has its own shock near t0 --
@@ -481,6 +518,12 @@ def build_panel(shocks:      pd.DataFrame,
                 similarity_cache[sim_key] = similarity(stock_i, stock_j)
             sim_ij = similarity_cache[sim_key]
 
+            if len(ri_corr) == len(corr_window) and stock_j in ret_corr.columns:
+                rj_corr = ret_corr[stock_j].to_numpy(dtype=float)
+                corr_ij = pre_event_corr(ri_corr, rj_corr)
+            else:
+                corr_ij = np.nan
+
             # Interaction terms (use NaN-safe illiq for interactions)
             illiq_safe = illiq_j if not np.isnan(illiq_j) else np.nan
 
@@ -494,16 +537,22 @@ def build_panel(shocks:      pd.DataFrame,
                 "AR_j":          ar_j,
                 "Shock_i":       car_i,
                 "w_i":           w_i,
+                "w_j":           w_j,
                 "Illiq_j":       illiq_j,
                 "Mispricing_k":  mispricing,
                 "Similarity_ij": sim_ij,
+                "Corr_ij_60d":   corr_ij,
+                "HHI_etf_t":     hhi_etf,
                 "Neg_e":         is_neg,
                 # Pre-computed interaction terms
-                "b1_term":   car_i * w_i,
-                "b2_term":   car_i * w_i * illiq_safe,
-                "b4_term":   car_i * w_i * mispricing,
-                "b5_term":   car_i * sim_ij,
-                "asym_term": is_neg * car_i * w_i,
+                "b1_term":              car_i * w_i,
+                "b2_term":              car_i * w_i * illiq_safe,
+                "b4_term":              car_i * w_i * mispricing,
+                "b5_term":              car_i * sim_ij,
+                "receiver_weight_term": car_i * w_i * w_j,
+                "corr_term":            car_i * w_i * corr_ij,
+                "hhi_term":             car_i * w_i * hhi_etf,
+                "asym_term":            is_neg * car_i * w_i,
             })
 
     return pd.DataFrame(rows)
@@ -521,8 +570,10 @@ def run_regression(panel: pd.DataFrame) -> None:
     materializing them as dummy variables. This is more stable for the large
     panel and allows one-way and two-way clustered standard errors.
     """
-    main_terms = ["b1_term", "b2_term", "b4_term", "b5_term", "asym_term",
-                  "Illiq_j", "Mispricing_k", "Similarity_ij", "Neg_e"]
+    main_terms = ["b1_term", "b2_term", "b4_term", "b5_term",
+                  "receiver_weight_term", "corr_term", "hhi_term",
+                  "asym_term", "Illiq_j", "Mispricing_k", "Similarity_ij",
+                  "w_j", "Corr_ij_60d", "HHI_etf_t", "Neg_e"]
     required = ["AR_j", *main_terms, "stock_j", "year_quarter", "event_id"]
     df = panel.dropna(subset=required).copy()
 
@@ -577,7 +628,7 @@ def run_regression(panel: pd.DataFrame) -> None:
             f.write(_twoway_summary_text(result_twoway, main_terms))
     print(f"\nFull summary saved: {txt_path}")
 
-    _plot_coefs(result_oneway, main_terms[:5])
+    _plot_coefs(result_oneway, main_terms[:8])
     asymmetry_analysis(df)
 
 def _estimate_absorbed(df: pd.DataFrame, terms: list,
@@ -673,11 +724,17 @@ def _print_interpretation(coefs, pvals, terms):
         "b2_term":       "Beta2  Liquidity channel          (Shock x w_i x Illiq_j)",
         "b4_term":       "Beta4  Arbitrage channel          (Shock x w_i x Mispricing)",
         "b5_term":       "Beta5  Informational spillover    (Shock x Similarity)",
+        "receiver_weight_term": "Beta6  Receiver weight channel   (Shock x w_i x w_j)",
+        "corr_term":     "Beta7  Return comovement channel  (Shock x w_i x Corr)",
+        "hhi_term":      "Beta8  ETF concentration channel  (Shock x w_i x HHI)",
         "asym_term":     "Delta   Negative asymmetry         (Neg x Shock x w_i)",
         "Illiq_j":       "Gamma1  Illiquidity main effect",
         "Mispricing_k":  "Gamma2  Mispricing main effect",
         "Similarity_ij": "Gamma3  Similarity main effect",
-        "Neg_e":         "Gamma4  Negative shock main effect",
+        "w_j":           "Gamma4  Receiver weight main effect",
+        "Corr_ij_60d":   "Gamma5  Pre-event comovement main effect",
+        "HHI_etf_t":     "Gamma6  ETF concentration main effect",
+        "Neg_e":         "Gamma7  Negative shock main effect",
     }
     print("\n-- Interpretation --")
     for term in terms:
@@ -697,6 +754,9 @@ def _plot_coefs(result, terms):
         "b2_term":   "Beta2 Liquidity",
         "b4_term":   "Beta4 Arbitrage",
         "b5_term":   "Beta5 Informational",
+        "receiver_weight_term": "Beta6 Receiver Weight",
+        "corr_term":  "Beta7 Comovement",
+        "hhi_term":   "Beta8 Concentration",
         "asym_term": "Delta Asymmetry",
     }
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -720,12 +780,16 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
     for sign, label in [(0, "POSITIVE"), (1, "NEGATIVE")]:
         sub = panel[panel["Neg_e"] == sign].dropna(
             subset=["AR_j", "b1_term", "b2_term", "b4_term", "b5_term",
-                    "Illiq_j", "Mispricing_k", "Similarity_ij"])
+                    "receiver_weight_term", "corr_term", "hhi_term",
+                    "Illiq_j", "Mispricing_k", "Similarity_ij",
+                    "w_j", "Corr_ij_60d", "HHI_etf_t"])
         if len(sub) < 50:
             print(f"[WARN] Too few {label} shocks ({len(sub)}). Skipping.")
             continue
         formula = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
+                   " + receiver_weight_term + corr_term + hhi_term"
                    " + Illiq_j + Mispricing_k + Similarity_ij"
+                   " + w_j + Corr_ij_60d + HHI_etf_t"
                    " + C(stock_j) + C(year_quarter)")
         try:
             res = smf.ols(formula, data=sub).fit(
@@ -737,7 +801,8 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
         print(f"\n{'=' * 60}")
         print(f"SUBSAMPLE: {label} SHOCKS  (N={res.nobs:.0f})")
         print(f"{'=' * 60}")
-        terms = ["b1_term", "b2_term", "b4_term", "b5_term"]
+        terms = ["b1_term", "b2_term", "b4_term", "b5_term",
+                 "receiver_weight_term", "corr_term", "hhi_term"]
         tbl = res.summary2().tables[1]
         available_cols = [c for c in ["Coef.", "Std.Err.", "t", "P>|t|",
                                        "z", "P>|z|"]
@@ -752,14 +817,16 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
 
-    # Check for cached panel
     panel_path = OUTPUT_DIR / "panel_improved.csv"
     if panel_path.exists():
-        print(f"\nLoading existing panel from {panel_path}...")
-        full_panel = pd.read_csv(panel_path, parse_dates=["t0"])
-        print(f"  Panel shape: {full_panel.shape}")
-        run_regression(full_panel)
-        import sys; sys.exit(0)
+        existing_cols = set(pd.read_csv(panel_path, nrows=0).columns)
+        if REQUIRED_PANEL_COLUMNS.issubset(existing_cols):
+            print(f"\nLoading existing panel from {panel_path}...")
+            full_panel = pd.read_csv(panel_path, parse_dates=["t0"])
+            print(f"  Panel shape: {full_panel.shape}")
+            run_regression(full_panel)
+            import sys; sys.exit(0)
+        print(f"\nExisting panel missing new variables. Rebuilding {panel_path}...")
 
     panels_all = []
     all_shock_diagnostics = []
@@ -842,15 +909,4 @@ if __name__ == "__main__":
 
         # Run regression
         run_regression(full_panel)
-
-
-
-
-
-
-
-
-
-
-
 

@@ -1,58 +1,119 @@
 # Current Results Interpretation
 
-This note summarizes the current empirical results of the intra-ETF shock transmission project. It is written as thesis-oriented interpretation, not as a final results chapter.
+This note summarizes the empirical results of the intra-ETF shock transmission project. It is written as thesis-oriented interpretation, not as a final results chapter.
 
-## Main Econometric Result
+The results should be read in two stages. The first stage is the previous improved specification, before adding receiver weight, pre-event return correlation and ETF concentration. The second stage is the expanded specification, which adds these variables to test whether basket structure and market connectedness explain part of the spillover mechanism.
 
-The improved model estimates whether abnormal return shocks in one ETF constituent are associated with abnormal returns in other constituents held by the same ETF. The final panel contains 758,013 observations. After removing rows with missing model variables, the main regression uses 744,666 observations across 41,393 shock events, 208 receiver stocks and 45 year-quarter periods.
+## Previous Improved Specification
 
-The main specification includes receiver-stock fixed effects and year-quarter fixed effects. The final inference uses two-way clustered standard errors by event and receiver stock. The model excludes SPY from the main analysis because SPY is a broad market ETF, not a sector ETF, and it uses IXC as the benchmark for XLE to avoid relying on the broad market index for the energy sector.
+The previous improved model estimated whether abnormal return shocks in one ETF constituent were associated with abnormal returns in other constituents held by the same ETF. The final panel contained 758,013 observations. After removing rows with missing model variables, the main regression used 744,666 observations across 41,393 shock events, 208 receiver stocks and 45 year-quarter periods.
 
-## Interpretation of the Main Coefficients
+The specification included receiver-stock fixed effects and year-quarter fixed effects. The final inference used two-way clustered standard errors by event and receiver stock. The model excluded SPY from the main analysis because SPY is a broad market ETF, not a sector ETF, and it used IXC as the benchmark for XLE to avoid relying on the broad market index for the energy sector.
 
-The direct propagation term, `b1_term = Shock_i x w_i`, is negative and statistically significant in the pooled model. This means that, on average, a larger constituent shock weighted by its ETF importance is associated with an opposite-sign abnormal reaction among receiver stocks. This should not be interpreted as the absence of spillovers. A plausible interpretation is that the direct effect captures substitution, relative-price adjustment, short-term reversal, or portfolio rebalancing forces after controlling for receiver fixed effects and time effects.
+Two-way clustered results in the previous improved specification:
 
-The liquidity channel, `b2_term = Shock_i x w_i x Illiq_j`, is positive and highly significant. This is one of the clearest findings. It suggests that receiver stocks with higher illiquidity are more exposed to intra-ETF transmission. This is consistent with the idea that less liquid stocks absorb order-flow pressure or common ETF-level trading effects less smoothly.
+| Term | Coef. | SE | p-value |
+| --- | ---: | ---: | ---: |
+| `b1_term` | -0.4638 | 0.1454 | 0.0014 |
+| `b2_term` | 0.3326 | 0.0540 | <0.001 |
+| `b4_term` | -2.7383 | 2.1661 | 0.2062 |
+| `b5_term` | 0.0187 | 0.0029 | <0.001 |
+| `asym_term` | -0.1410 | 0.1001 | 0.1588 |
 
-The arbitrage/mispricing channel, `b4_term = Shock_i x w_i x Mispricing_k`, is negative in the full model, but it is not statistically significant once two-way clustered standard errors are used. This means it should be treated as suggestive rather than as a core result. The sign may reflect correction forces when the ETF has moved away from its benchmark over the pre-event window, but the evidence is weaker than for liquidity and informational spillovers.
+The direct propagation term, `b1_term = Shock_i x w_i`, was negative and statistically significant in the pooled model. This means that, on average, a larger constituent shock weighted by its ETF importance was associated with an opposite-sign abnormal reaction among receiver stocks. This should not be interpreted as the absence of spillovers. A plausible interpretation is that the direct effect captures substitution, relative-price adjustment, short-term reversal, or portfolio rebalancing forces after controlling for receiver fixed effects and time effects.
 
-The informational spillover channel, `b5_term = Shock_i x Similarity_ij`, is positive and highly significant. This is the strongest evidence for economically meaningful spillovers. Shocks to one constituent are more likely to be transmitted to receiver stocks that are economically similar, measured through sector and industry proximity.
+The liquidity channel, `b2_term = Shock_i x w_i x Illiq_j`, was positive and highly significant. This was one of the clearest findings. It suggested that receiver stocks with higher illiquidity were more exposed to intra-ETF transmission. This is consistent with the idea that less liquid stocks absorb order-flow pressure or common ETF-level trading effects less smoothly.
 
-The asymmetry term, `asym_term = Neg_e x Shock_i x w_i`, is negative but not statistically significant under two-way clustered standard errors. This suggests that negative shocks may propagate differently from positive shocks, but the current evidence is not strong enough to make asymmetry a main conclusion.
+The arbitrage/mispricing channel, `b4_term = Shock_i x w_i x Mispricing_k`, was negative in the full model, but it was not statistically significant once two-way clustered standard errors were used. This means it should be treated as suggestive rather than as a core result.
+
+The informational spillover channel, `b5_term = Shock_i x Similarity_ij`, was positive and highly significant. This was strong evidence for economically meaningful spillovers. Shocks to one constituent were more likely to be transmitted to receiver stocks that were economically similar, measured through sector and industry proximity.
+
+The asymmetry term, `asym_term = Neg_e x Shock_i x w_i`, was negative but not statistically significant under two-way clustered standard errors. The evidence was not strong enough to make negative-shock asymmetry a main conclusion.
+
+## Expanded Specification
+
+The expanded model adds three variables:
+
+- `w_j`: receiver stock weight in the ETF.
+- `Corr_ij_60d`: 60-day pre-event return correlation between the shocked and receiver stock.
+- `HHI_etf_t`: ETF concentration on the relevant holding date.
+
+The rebuilt panel contains 757,368 observations. After removing rows with missing model variables, the main regression uses 743,033 observations across 41,349 shock events, 206 receiver stocks and 45 year-quarter periods.
+
+Two-way clustered results in the expanded specification:
+
+| Term | Coef. | SE | p-value |
+| --- | ---: | ---: | ---: |
+| `b1_term` | -1.2020 | 0.2161 | <0.001 |
+| `b2_term` | 0.4854 | 0.0533 | <0.001 |
+| `b4_term` | -3.1222 | 2.1493 | 0.1463 |
+| `b5_term` | 0.0205 | 0.0028 | <0.001 |
+| `receiver_weight_term` | 7.5488 | 3.6623 | 0.0393 |
+| `corr_term` | 2.6345 | 0.2258 | <0.001 |
+| `hhi_term` | -6.1627 | 1.9303 | 0.0014 |
+| `asym_term` | -0.0996 | 0.1052 | 0.3436 |
+
+The direct propagation term remains negative and statistically significant. Its magnitude becomes larger after adding the new channels. This suggests that the original direct term was partly mixed with basket-structure and connectedness effects. Once those channels are separated, the remaining direct effect looks more clearly like relative-price adjustment or rebalancing rather than simple same-direction contagion.
+
+The liquidity channel remains positive and highly significant. Its coefficient increases from 0.3326 to 0.4854, which suggests that the liquidity mechanism is not weakened by the new variables. Instead, the liquidity interpretation becomes stronger because it survives a richer specification.
+
+The informational similarity channel remains positive and highly significant. Its coefficient also increases slightly, from 0.0187 to 0.0205. This means that static economic similarity still matters even after controlling for dynamic return comovement.
+
+The receiver-weight channel, `receiver_weight_term = Shock_i x w_i x w_j`, is positive and significant. This means that transmission is stronger when the receiver stock also has a larger weight in the ETF. This adds a useful basket-structure interpretation: both the origin weight and the receiver weight matter.
+
+The return-comovement channel, `corr_term = Shock_i x w_i x Corr_ij_60d`, is positive and strongly significant. This is the most important new result. It shows that shocks transmit more strongly between stocks that already moved together before the event. This supports a connectedness interpretation that goes beyond static GICS similarity.
+
+The ETF concentration channel, `hhi_term = Shock_i x w_i x HHI_etf_t`, is negative and significant. This suggests that concentration changes the way shocks propagate through the ETF basket. The negative sign should be interpreted carefully: in more concentrated ETFs, the marginal direct weighted shock may be partly absorbed or offset by dominant-name structure, sector-specific hedging, or relative-price adjustments.
+
+The asymmetry term remains not significant. Therefore, the expanded specification does not change the conclusion that negative-shock asymmetry is not a main result at this stage.
+
+## Effect of Adding the New Variables
+
+The new variables do not overturn the previous results. They refine them.
+
+The main robust findings from the previous model remain valid: liquidity and informational similarity are still significant, and the direct weighted shock term is still negative. The expanded model adds a more precise explanation of why transmission differs across receiver stocks and ETFs.
+
+The key change is that the model now separates three mechanisms that were not explicit before:
+
+1. Receiver importance in the ETF basket.
+2. Dynamic market connectedness before the event.
+3. ETF portfolio concentration.
+
+This is useful for the thesis because it shows that intra-ETF transmission is not only about the shocked stock's weight or the receiver's liquidity. It also depends on how important the receiver is inside the ETF and how connected the two stocks already were in market returns.
 
 ## Heterogeneity Across ETFs
 
-The per-ETF regressions show that the transmission mechanism is not homogeneous across funds. XLE, IHE and XLV show strong negative direct propagation, while XME shows a positive direct propagation term. This matters for the thesis because it means that intra-ETF spillovers are not a single universal effect. The sector structure, constituent composition, liquidity and concentration of each ETF appear to influence the direction and magnitude of transmission.
+In the previous interpretation, the per-ETF regressions showed that the transmission mechanism was not homogeneous across funds. XLE, IHE and XLV showed strong negative direct propagation, while XME showed a positive direct propagation term.
 
-The informational channel is positive and significant in all ETF-specific regressions. This supports the interpretation that economic relatedness between firms is a stable transmission mechanism. The liquidity and mispricing channels are more heterogeneous, which is reasonable because liquidity conditions and ETF arbitrage dynamics differ across sectors.
+In the expanded model, ETF-level heterogeneity remains important. The direct weighted shock term is negative in all ETF-specific regressions, but the size and channel behavior differ strongly across `XME`, `XLE`, `IHE` and `XLV`. The return-comovement channel is positive and significant across the ETF-specific regressions, which supports the idea that pre-event market connectedness is a stable transmission mechanism.
 
 ## Robustness Interpretation
 
 The results are broadly robust to several checks, including positive/negative shock splits, pre/post-COVID periods, per-ETF regressions, excluding top-weight observations, trimming extreme values, shuffled outcomes and removing year-quarter fixed effects.
 
-The shuffled-outcome placebo is especially useful: after randomly permuting `AR_j`, the main coefficients lose statistical significance and the adjusted R2 collapses toward zero. This indicates that the observed relationships are not purely mechanical artifacts of the design matrix.
+The corrected placebo event-assignment check is especially important. It randomly reassigns event-level shock variables within ETF and recomputes the interaction terms. In the expanded run, the main placebo coefficients lose statistical significance, including `receiver_weight_term`, `corr_term` and `hhi_term`. This supports the idea that the results are tied to the actual event timing and event-receiver structure.
 
-The placebo event-assignment check should be interpreted as a falsification exercise. It breaks the link between the original shock event and the receiver outcome while preserving ETF-level structure. If this placebo produces much weaker effects than the baseline, it supports the idea that timing and event assignment matter.
+The shuffled-outcome placebo also works as expected: after randomly permuting `AR_j`, the adjusted R2 collapses toward zero and the main coefficients lose significance.
 
 ## Machine Learning and Neural Network Results
 
-The machine-learning script compares a simple OLS predictive baseline, LightGBM and a feed-forward neural network. The neural network follows the supervisor's suggestion: the activation function is fixed to `tanh`, and the hyperparameter grid is modest, varying the number of hidden layers and the number of nodes per layer. In the current run, the best configuration is 3 hidden layers with 16 nodes per layer.
+The machine-learning script compares a simple OLS predictive baseline, LightGBM and a feed-forward neural network. The neural network follows the supervisor's suggestion: the activation function is fixed to `tanh`, and the hyperparameter grid is modest, varying the number of hidden layers and the number of nodes per layer.
 
-The current test results are:
+ML comparison before and after the expanded variables:
 
-| Model | Test R2 | Test MAE | Directional Accuracy |
-| --- | ---: | ---: | ---: |
-| OLS baseline | 0.0002 | 0.0221 | 0.5230 |
-| LightGBM | 0.0163 | 0.0220 | 0.5407 |
-| Tanh neural network | 0.0146 | 0.0220 | 0.5377 |
+| Specification | Model | Test R2 | Test MAE | Directional Accuracy |
+| --- | --- | ---: | ---: | ---: |
+| Previous improved | OLS baseline | 0.0002 | 0.0221 | 0.5230 |
+| Previous improved | LightGBM | 0.0163 | 0.0220 | 0.5407 |
+| Previous improved | Tanh neural network | 0.0146 | 0.0220 | 0.5377 |
+| Expanded | OLS baseline | 0.0004 | 0.0221 | 0.5274 |
+| Expanded | LightGBM | -0.0122 | 0.0222 | 0.5449 |
+| Expanded | Tanh neural network | 0.0146 | 0.0220 | 0.5473 |
 
-LightGBM improves over OLS, but the improvement is limited. The neural network also improves over OLS, but it does not outperform LightGBM. This suggests that there is some non-linear predictive structure, but the current feature set does not contain enough graph-like information to clearly justify a more complex neural architecture.
+The expanded feature set does not improve predictive R2 for LightGBM. However, LightGBM feature importance shows that the new variables are used by the model, especially `corr_term`, `w_j`, `HHI_etf_t` and `Corr_ij_60d`. This suggests that the variables contain signal, but the signal is not stable enough to improve out-of-sample R2 in the current temporal split.
 
 ## Should We Build a Graph Neural Network?
 
-A graph neural network is not strongly justified yet. The current neural network and LightGBM results show only limited predictive gains, and LightGBM remains the best predictive model. A GNN would add implementation complexity and require a clear graph definition: nodes, edges, edge weights, temporal snapshots and target construction.
+A graph neural network is still not strongly justified as a core thesis model. The econometric model now already includes graph-like information through pre-event return correlation and economic similarity. The latest ML results do not show a large predictive gain that would justify the extra complexity of a GNN.
 
-A GNN could become worthwhile if the thesis explicitly shifts toward network learning. For example, a graph could connect stocks by ETF co-membership, holding-weight overlap, GICS similarity, return correlation or lead-lag relationships. The model could then test whether graph structure improves prediction of receiver abnormal returns beyond the econometric variables already used.
-
-For the current thesis scope, the better next step is not a GNN. The priority should be to finalize the econometric specification, validate robust standard errors, strengthen placebo tests and write a clear interpretation of the heterogeneous ETF results. A GNN can be mentioned as a possible extension rather than implemented as a core requirement.
-
+A GNN could be mentioned as a future extension if the thesis explicitly shifts toward network learning. A graph could connect stocks by ETF co-membership, holding-weight overlap, GICS similarity, return correlation or lead-lag relationships. For the current thesis scope, the priority should be to finalize the econometric specification and write a clear interpretation of the robust channels.

@@ -53,8 +53,9 @@ FIG_DIR.mkdir(exist_ok=True)
 
 # Feature columns for ML models
 FEATURE_COLS = [
-    "Shock_i", "w_i", "Illiq_j", "Mispricing_k",
-    "Similarity_ij", "Neg_e",
+    "Shock_i", "w_i", "w_j", "Illiq_j", "Mispricing_k",
+    "Similarity_ij", "Corr_ij_60d", "HHI_etf_t", "Neg_e",
+    "receiver_weight_term", "corr_term", "hhi_term",
 ]
 
 TARGET_COL = "AR_j"
@@ -576,8 +577,4 @@ if __name__ == "__main__":
             print("  ==> ML shows meaningful improvement. GNN may be justified.")
         else:
             print("  ==> ML shows limited improvement. GNN unlikely to add value.")
-
-
-
-
 

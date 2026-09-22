@@ -1,14 +1,14 @@
 # Econometric Methodology & Empirical Design
 
-> **Document:** Econometric Specification & Estimation Protocol  
-> **Master's Thesis:** *Structural Dynamics and Contagion Mechanisms of Intra-ETF Shock Transmission*  
+> **Document:** Econometric Specification & Estimation Protocol
+> **Master's Thesis:** *Structural Dynamics and Contagion Mechanisms of Intra-ETF Shock Transmission*
 > **Location:** [`src/methodology.md`](src/methodology.md)
 
 ---
 
 ## 1. Introduction & Econometric Framework
 
-The objective of this empirical design is to isolate firm-specific idiosyncratic shocks occurring in major constituent stocks of Exchange-Traded Funds (ETFs) and quantify their directional transmission to co-constituent stocks of the same ETF. 
+The objective of this empirical design is to isolate firm-specific idiosyncratic shocks occurring in major constituent stocks of Exchange-Traded Funds (ETFs) and quantify their directional transmission to co-constituent stocks of the same ETF.
 
 To overcome the well-known limitations of corporate event studies (e.g., selection bias, news release lags, announcement clustering, and incomplete databases), this thesis employs an **endogenous event identification methodology** grounded in standard asset pricing and event-study theory (MacKinlay, 1997; Ben-David, Franzoni, & Moussawi, 2012, 2018).
 
@@ -63,7 +63,7 @@ Where:
   $$\hat{\sigma}_{\epsilon, i}(t_0) = \sqrt{\frac{1}{W - 2} \sum_{t=t_0 - 125}^{t_0 - 6} \hat{\epsilon}_{i,t}^2}$$
 
 > [!IMPORTANT]
-> **Elimination of Lookahead Bias:**  
+> **Elimination of Lookahead Bias:**
 > In preliminary Phase 0 modeling (`20_estimate_baseline_model.py`), the shock cutoff used the full 11-year sample standard deviation of CARs. This introduced lookahead bias (conditioning past shock classification on future market volatility). Computing $\hat{\sigma}_{\epsilon, i}(t_0)$ dynamically from the historical estimation window strictly confines information to the pre-event information set $\mathcal{F}_{t_0 - 6}$.
 
 ### 3.2 Shock Characteristics
@@ -105,10 +105,13 @@ To prevent confounding the transmission effect with independent firm-specific ne
 
 ## 6. Econometric Model Specification
 
-The primary empirical model tests the transmission hypotheses within a two-way fixed effects panel regression framework.
+The primary empirical model tests the transmission hypotheses within a two-way fixed effects panel regression framework. The project now keeps two specifications documented: the previous improved specification and the expanded specification. This makes it possible to compare how the results change when receiver weight, pre-event return comovement and ETF concentration are added.
 
-### 6.1 Full Regression Equation
-$$\begin{aligned}
+### 6.1 Previous Improved Specification
+
+The previous improved specification included the original direct, liquidity, mispricing, informational and asymmetry channels:
+
+$\begin{aligned}
 AR_{j,e} = \alpha_j &+ \beta_1 (Shock_{i,e} \times w_{i,t_0}) \\
 &+ \beta_2 (Shock_{i,e} \times w_{i,t_0} \times Illiq_{j,t_0}) \\
 &+ \beta_4 (Shock_{i,e} \times w_{i,t_0} \times Mispricing_{k,t_0}) \\
@@ -116,17 +119,34 @@ AR_{j,e} = \alpha_j &+ \beta_1 (Shock_{i,e} \times w_{i,t_0}) \\
 &+ \delta (Neg_e \times Shock_{i,e} \times w_{i,t_0}) \\
 &+ \gamma_1 Illiq_{j,t_0} + \gamma_2 Mispricing_{k,t_0} + \gamma_3 Similarity_{ij} + \gamma_4 Neg_e \\
 &+ FE_j + FE_{yq} + \varepsilon_{j,e}
-\end{aligned}$$
+\end{aligned}$
 
-### 6.2 Key Econometric Enhancements over Preliminary Model
-1. **Inclusion of Main Effects ($\gamma_1, \gamma_2, \gamma_3, \gamma_4$):** Standard econometric interaction theory dictates that interaction terms without corresponding main effects risk capturing omitted level differences. The terms ensure $\beta_1..\beta_5$ isolate true moderating transmission channels.
-2. **Two-Way Fixed Effects:**
-   - $FE_j$ (Receiver Stock Fixed Effects): Controls for time-invariant unobserved firm characteristics (average illiquidity, corporate governance, steady-state analyst coverage).
-   - $FE_{yq}$ (Year-Quarter Time Fixed Effects): Controls for macro-financial regimes, market volatility shifts, interest rate hiking cycles, and macroeconomic trends.
-3. **Two-Way Clustered Standard Errors:**
-   - Standard errors are clustered simultaneously by **Event ID** ($stock_i \times t_0$) and **Receiver Stock** ($stock_j$).
-   - Event clustering accounts for cross-sectional correlation among all peers reacting to the same shock on date $t_0$.
-   - Stock clustering accounts for persistent serial correlation in repeated observations of stock $j$ across different events.
+### 6.2 Expanded Specification
+
+The expanded specification keeps the previous channels and adds receiver weight, pre-event return comovement and ETF concentration:
+
+$\begin{aligned}
+AR_{j,e} = \alpha_j &+ \beta_1 (Shock_{i,e} \times w_{i,t_0}) \\
+&+ \beta_2 (Shock_{i,e} \times w_{i,t_0} \times Illiq_{j,t_0}) \\
+&+ \beta_4 (Shock_{i,e} \times w_{i,t_0} \times Mispricing_{k,t_0}) \\
+&+ \beta_5 (Shock_{i,e} \times Similarity_{ij}) \\
+&+ \beta_6 (Shock_{i,e} \times w_{i,t_0} \times w_{j,t_0}) \\
+&+ \beta_7 (Shock_{i,e} \times w_{i,t_0} \times Corr_{ij,60d}) \\
+&+ \beta_8 (Shock_{i,e} \times w_{i,t_0} \times HHI_{k,t_0}) \\
+&+ \delta (Neg_e \times Shock_{i,e} \times w_{i,t_0}) \\
+&+ \gamma_1 Illiq_{j,t_0} + \gamma_2 Mispricing_{k,t_0} + \gamma_3 Similarity_{ij} \\
+&+ \gamma_4 w_{j,t_0} + \gamma_5 Corr_{ij,60d} + \gamma_6 HHI_{k,t_0} + \gamma_7 Neg_e \\
+&+ FE_j + FE_{yq} + \varepsilon_{j,e}
+\end{aligned}$
+
+### 6.3 Key Econometric Enhancements over the Preliminary Model
+
+1. **Inclusion of Main Effects:** Main effects are included for all moderating variables used in interactions. This avoids interpreting interaction terms as if they were isolated from level differences.
+2. **Receiver Weight Channel:** `w_j` captures whether the receiver stock's own importance in the ETF affects the strength of transmission.
+3. **Pre-Event Return Comovement Channel:** `Corr_ij_60d` captures recent market connectedness between the shocked and receiver stock using only information before the event date.
+4. **ETF Concentration Channel:** `HHI_etf_t` captures whether the structure of the ETF basket changes the transmission mechanism.
+5. **Two-Way Fixed Effects:** Receiver-stock fixed effects control for time-invariant firm characteristics, while year-quarter fixed effects control for macro-financial regimes.
+6. **Two-Way Clustered Standard Errors:** Standard errors are clustered by event and receiver stock.
 
 ---
 
@@ -134,25 +154,31 @@ AR_{j,e} = \alpha_j &+ \beta_1 (Shock_{i,e} \times w_{i,t_0}) \\
 
 | Variable | Mathematical Definition | Data Source / Processing | Economic Role & Interpretation |
 | :--- | :--- | :--- | :--- |
-| **$AR_j$** | $\sum_{t=t_0}^{t_0+3} (R_{j,t} - \hat{\alpha}_j - \hat{\beta}_j R_{m,t})$ | [`returns_clean.csv`](holdings/processed/returns_clean.csv), [`benchmarks.csv`](holdings/processed/benchmarks.csv) | **Dependent Variable:** Cumulative abnormal return of receiver stock $j$. |
+| **$AR_j$** | $\sum_{t=t_0}^{t_0+3} (R_{j,t} - \hat{\alpha}_j - \hat{\beta}_j R_{m,t})$ | `returns_clean.csv`, `benchmarks.csv` | **Dependent Variable:** Cumulative abnormal return of receiver stock $j$. |
 | **$Shock_i$** | $\sum_{t=t_0}^{t_0+3} (R_{i,t} - \hat{\alpha}_i - \hat{\beta}_i R_{m,t})$ | Market model residuals | **Shock Impulse:** Cumulative abnormal return of shocked stock $i$. |
-| **$w_{i,t_0}$** | $\frac{\text{Value}_{i,t_0}}{\sum_m \text{Value}_{m,t_0}} \in [0, 1]$ | [`{etf}_holdings.csv`](holdings/processed/) | **Constituent Weight:** Most recent portfolio weight of stock $i$ prior to $t_0$. |
-| **$Illiq_{j,t_0}$** | $\ln\left(1 + 10^{10} \times \frac{1}{20}\sum_{t=1}^{20} \frac{\|R_{j,t0-t}\|}{Vol \times P}\right)$ | [`amihud.csv`](holdings/processed/amihud.csv) | **Liquidity Friction:** Log Amihud illiquidity ratio. Higher = less liquid. |
-| **$Mispricing_{k,t_0}$** | $\sum_{t=t_0-5}^{t_0-1} R_{ETF,t} - \sum_{t=t_0-5}^{t_0-1} R_{bench,t}$ | Returns differences | **Arbitrage Incentive:** Pre-event cumulative tracking discrepancy proxy. |
-| **$Similarity_{ij}$** | $\begin{cases} 1.0 & \text{Same Industry} \\ 0.5 & \text{Same Sector, Diff Ind} \\ 0.0 & \text{Diff Sector} \end{cases}$ | [`gics_data.csv`](holdings/processed/gics_data.csv) | **Informational Link:** GICS-based peer relatedness. |
-| **$Neg_e$** | $\mathbb{I}_{\{Shock_i < 0\}} \in \{0, 1\}$ | Derived from $Shock_i$ sign | **Asymmetry Dummy:** Flags negative / adverse market shocks. |
+| **$w_{i,t_0}$** | Weight of shocked stock $i$ in ETF $k$ before the event | `{etf}_holdings.csv` | **Origin Weight:** Measures the ETF importance of the shocked stock. |
+| **$w_{j,t_0}$** | Weight of receiver stock $j$ in ETF $k$ before the event | `{etf}_holdings.csv` | **Receiver Weight:** Tests whether larger receiver positions react more strongly. |
+| **$Illiq_{j,t_0}$** | $\ln(1 + 10^{10} \times Amihud_{j,t_0})$ | `amihud.csv` | **Liquidity Friction:** Higher values mean less liquid receiver stocks. |
+| **$Mispricing_{k,t_0}$** | Five-day ETF return minus benchmark return before the event | ETF and benchmark returns | **Arbitrage Incentive:** Proxy for pre-event tracking discrepancy. |
+| **$Similarity_{ij}$** | 1 same industry, 0.5 same sector, 0 different sector | `gics_data.csv` | **Informational Link:** Static economic relatedness. |
+| **$Corr_{ij,60d}$** | Pearson correlation of stock $i$ and stock $j$ returns over the 60 trading days before $t_0$ | `returns_clean.csv` | **Market Connectedness:** Dynamic pre-event co-movement. |
+| **$HHI_{k,t_0}$** | $\sum_m s_{m,k,t_0}^2$, where $s_m$ are normalized ETF weights | `{etf}_holdings.csv` | **ETF Concentration:** Measures whether the ETF is concentrated in a few names. |
+| **$Neg_e$** | $\mathbb{I}_{\{Shock_i < 0\}}$ | Derived from `Shock_i` sign | **Asymmetry Dummy:** Flags negative shocks. |
 
 ---
 
 ## 8. Hypothesis Testing & Theoretical Interpretation
 
-| Parameter | Hypothesis | Null Hypothesis ($H_0$) | Economic Interpretation of Rejection |
+| Parameter | Channel | Null Hypothesis | Economic Interpretation of Rejection |
 | :--- | :--- | :--- | :--- |
-| $\beta_1$ | **H1: Baseline Propagation** | $\beta_1 \le 0$ | If $\beta_1 > 0$, shocks propagate across the ETF basket in proportion to constituent weight, confirming mechanical or comovement spillovers. |
-| $\beta_2$ | **H2: Liquidity Channel** | $\beta_2 = 0$ | If $\beta_2 > 0$, illiquid receivers suffer stronger price pressure. If $\beta_2 < 0$, illiquidity serves as an execution friction dampening immediate basket transmission. |
-| $\beta_4$ | **H4: Arbitrage Channel** | $\beta_4 = 0$ | Tests whether ETF premium/discount amplifies cross-stock basket transmission through Authorized Participant arbitrage rebalancing. |
-| $\beta_5$ | **H1 (Info): Informational** | $\beta_5 \le 0$ | If $\beta_5 > 0$, economically similar peers receive stronger spillovers, indicating fundamental information diffusion beyond blind index trading. |
-| $\delta$ | **H5: Asymmetry** | $\delta \le 0$ | If $\delta > 0$, negative shocks propagate with significantly higher intensity than positive shocks, proving asymmetric downside contagion. |
+| $\beta_1$ | Baseline propagation | $\beta_1 = 0$ | Tests whether shocks propagate through direct weighted exposure. |
+| $\beta_2$ | Liquidity channel | $\beta_2 = 0$ | Tests whether illiquid receivers react more strongly to shocks. |
+| $\beta_4$ | Arbitrage / mispricing channel | $\beta_4 = 0$ | Tests whether pre-event ETF benchmark deviation changes transmission. |
+| $\beta_5$ | Informational similarity | $\beta_5 = 0$ | Tests whether economically similar firms receive stronger spillovers. |
+| $\beta_6$ | Receiver weight channel | $\beta_6 = 0$ | Tests whether larger receiver positions in the ETF amplify transmission. |
+| $\beta_7$ | Return comovement channel | $\beta_7 = 0$ | Tests whether stocks that moved together before the event transmit shocks more strongly. |
+| $\beta_8$ | ETF concentration channel | $\beta_8 = 0$ | Tests whether concentrated ETF structures change shock transmission. |
+| $\delta$ | Asymmetry | $\delta = 0$ | Tests whether negative shocks transmit differently from positive shocks. |
 
 ---
 
@@ -160,33 +186,32 @@ AR_{j,e} = \alpha_j &+ \beta_1 (Shock_{i,e} \times w_{i,t_0}) \\
 
 To establish the validity of the empirical results against model assumptions, the following 12 robustness checks are prioritized:
 
-1. **Alternative Shock Cutoffs ($\theta \in \{1.0\sigma, 2.0\sigma, 2.5\sigma\}$):**  
+1. **Alternative Shock Cutoffs ($\theta \in \{1.0\sigma, 2.0\sigma, 2.5\sigma\}$):**
    Evaluates whether spillover coefficients are sensitive to the threshold defining a discrete shock event versus continuous noise.
-2. **Alternative Event Horizon Lengths ($H \in \{1, 2, 5\}$ trading days):**  
+2. **Alternative Event Horizon Lengths ($H \in \{1, 2, 5\}$ trading days):**
    Tests whether transmission occurs immediately ($H=1$, $[t_0, t_0+1]$) or requires time to diffuse ($H=5$, $[t_0, t_0+5]$).
-3. **Alternative Estimation Window Lengths ($W \in \{60, 90, 180, 252\}$ trading days):**  
+3. **Alternative Estimation Window Lengths ($W \in \{60, 90, 180, 252\}$ trading days):**
    Verifies that market model betas and residual standard errors are invariant to the calibration horizon length.
-4. **Alternative Estimation Gap ($GAP \in \{2, 10\}$ trading days):**  
+4. **Alternative Estimation Gap ($GAP \in \{2, 10\}$ trading days):**
    Ensures that results are not sensitive to the 5-day pre-event information exclusion window.
-5. **Multi-Factor Systematic Purging (Fama-French 3-Factor Model):**  
+5. **Multi-Factor Systematic Purging (Fama-French 3-Factor Model):**
    Replaces the single-index market model with FMB, HML, and Market factors to verify that abnormal returns are truly idiosyncratic and not latent size or value factor co-loadings.
-6. **Subsample Temporal Stability (Pre-COVID, COVID Shock, Post-COVID Rate Hike):**  
+6. **Subsample Temporal Stability (Pre-COVID, COVID Shock, Post-COVID Rate Hike):**
    Splits sample into 2015–2019 (low rate regime), 2020–2021 (COVID volatility shock), and 2022–2026 (Fed quantitative tightening) to test structural stability.
-7. **ETF-by-ETF Sector Heterogeneity:**  
+7. **ETF-by-ETF Sector Heterogeneity:**
    Estimates the regression separately for `XME`, `XLE`, `IHE`, and `XLV` to examine cross-sector differences in liquidity and concentration.
-8. **Top Constituent Concentration Restriction ($w_i > 2\%$ and $w_i > 5\%$):**  
+8. **Top Constituent Concentration Restriction ($w_i > 2\%$ and $w_i > 5\%$):**
    Restricts the shock sample to dominant constituents (e.g., XOM/CVX in XLE, LLY/JNJ in IHE) where basket arbitrage pressure is theoretically greatest.
-9. **Placebo / Pseudo-Event Date Shuffling:**  
+9. **Placebo / Pseudo-Event Date Shuffling:**
    Randomly permutes event dates $t_0$ across the calendar to confirm that empirical $t$-statistics on $\beta_1..\beta_5$ do not arise spuriously from background market noise.
-10. **Alternative Liquidity Proxy (Turnover & Roll Spread):**  
+10. **Alternative Liquidity Proxy (Turnover & Roll Spread):**
     Replaces Amihud illiquidity with share turnover ($\text{Volume} / \text{Shares Outstanding}$) and Roll (1984) effective bid-ask spread proxy to confirm the liquidity channel.
-11. **Contamination Window Sensitivity ($[t_0 - 1, t_0 + 1]$ vs $[t_0 - 5, t_0 + 5]$):**  
+11. **Contamination Window Sensitivity ($[t_0 - 1, t_0 + 1]$ vs $[t_0 - 5, t_0 + 5]$):**
     Varies the strictness of the overlapping event exclusion filter.
-12. **Pure Leave-One-Out ETF Return Benchmark:**  
+12. **Pure Leave-One-Out ETF Return Benchmark:**
     Re-estimates receiver abnormal returns using the leave-one-out basket return:
     $$AR_{k,t}^{(-i)} = \frac{R_{k,t} - w_{i,t} R_{i,t}}{1 - w_{i,t}}$$
     to directly compare sector benchmarking with synthetic basket residualization.
-
 
 
 

@@ -1,9 +1,9 @@
 # Structural Dynamics and Contagion Mechanisms of Intra-ETF Shock Transmission
 
-> **Degree Program:** Master's Thesis in Data Science (Trabajo de Fin de Máster — TFM)  
-> **Workspace Path:** [`.`](.)  
-> **Code Directory:** [`src`](./code)  
-> **Status:** Phase 0 Complete (Pipeline Validated) | Phase 1 In Progress (Econometric Model Refinement)
+> **Degree Program:** Master's Thesis in Data Science (Trabajo de Fin de Máster — TFM)
+> **Workspace Path:** [`.`](.)
+> **Code Directory:** [`src`](../../src)
+> **Status:** Econometric, robustness and ML pipeline executed with expanded transmission channels
 
 ---
 
@@ -20,15 +20,17 @@ Unlike prior literature that focuses primarily on aggregate ETF-level comovement
 
 ## 2. Theoretical Framework & Hypotheses
 
-The thesis formulates five testable hypotheses addressing the propagation of idiosyncratic shocks across ETF baskets:
+The thesis formulates several testable hypotheses addressing the propagation of idiosyncratic shocks across ETF baskets:
 
 | Hypothesis | Description | Theoretical Channel | Expected Sign |
 | :--- | :--- | :--- | :--- |
-| **H1: Baseline Propagation** | A firm-specific shock to stock $i$ generates abnormal returns of the same sign in co-constituent stock $j$, scaled by the portfolio weight $w_i$. | Institutional / Basket Comovement | $\beta_1 > 0$ |
-| **H2: Liquidity Channel** | Spillover magnitude is amplified (or conditioned) when the receiving stock $j$ is illiquid, as liquidity frictions exacerbate price pressure from basket rebalancing. | Market Microstructure / Price Impact | $\beta_2 \neq 0$ |
-| **H3: Weight Channel** | Shocks originating in larger constituent holdings generate substantially larger cross-asset spillovers than shocks to small-weight stocks. | Basket Imbalance & Arbitrage Exposure | Interaction with $w_i$ |
-| **H4: Flow Amplification** | Spillovers intensify on days characterized by large ETF creation/redemption activity and high trading volume. | Authorized Participant (AP) Arbitrage Flow | $\beta_3 > 0$ |
-| **H5: Asymmetric Transmission** | Negative shocks (drawdowns/distress) propagate more strongly than positive shocks, reflecting flight-to-liquidity, loss aversion, and short-sale frictions. | Asymmetric Contagion / Downside Risk | $\delta > 0$ |
+| **H1: Baseline Propagation** | A firm-specific shock to stock `i` affects co-constituent stock `j`, scaled by the portfolio weight `w_i`. | Institutional / Basket Comovement | $\beta_1 \neq 0$ |
+| **H2: Liquidity Channel** | Spillover magnitude changes when the receiving stock `j` is illiquid. | Market Microstructure / Price Impact | $\beta_2 \neq 0$ |
+| **H3: Informational Similarity** | Economically similar firms receive stronger spillovers. | Fundamental / Sector Linkage | $\beta_5 > 0$ |
+| **H4: Receiver Exposure** | Receiver stocks with larger ETF weights may react more strongly. | ETF Basket Structure | $\beta_6 \neq 0$ |
+| **H5: Return Comovement** | Stocks that moved together before the event may show stronger transmission. | Market Connectedness | $\beta_7 > 0$ |
+| **H6: ETF Concentration** | Concentrated ETF portfolios may transmit shocks differently from diversified portfolios. | Portfolio Concentration | $\beta_8 \neq 0$ |
+| **H7: Asymmetric Transmission** | Negative shocks may propagate differently from positive shocks. | Asymmetric Contagion / Downside Risk | $\delta \neq 0$ |
 
 ---
 
@@ -45,7 +47,7 @@ The sample covers daily trading from **2015-01-01 to 2026-02-12** (over 11 years
 | **XLV** | Health Care Select Sector SPDR Fund | Broad US Health Care Sector | [`^SP500-35`](holdings/processed/benchmarks.csv) (S&P Health Care) | **Included** (~60–70 stocks, sector-wide) |
 
 > [!IMPORTANT]
-> **Key Decision: SPY Exclusion from Main Econometric Estimation**  
+> **Key Decision: SPY Exclusion from Main Econometric Estimation**
 > `SPY` constituents comprise ~500 large-cap stocks that replicate the S&P 500 index (`^GSPC`). Using `^GSPC` as the benchmark creates an intractable self-benchmarking problem: top constituents (e.g., AAPL, NVDA, MSFT) have heavy weights in the index, biasing the market model beta upwards and artificially compressing idiosyncratic abnormal returns. SPY is preserved in the data pipeline for robustness, calendar anchoring, and market-wide comparisons, but excluded from primary spillover regressions.
 
 ---
@@ -152,10 +154,8 @@ The analytical pipeline follows an end-to-end reproducible workflow:
 
 ## 8. Current Project Status
 
-- **Phase 0 (Data Pipeline Complete):** All raw holdings across 5 ETFs ingested, price histories downloaded for 864 tickers, clean returns matrix built for 802 tickers, GICS classifications compiled, and Amihud ratios computed. Validation run on XME+XLE yielded initial empirical support for $H1, H2, H5$.
-- **Phase 1 (Econometric Model Refinement - Completed):** The improved specification now incorporates event-specific dynamic thresholds, external energy benchmark `IXC`, receiver stock main effects, year-quarter time fixed effects, two-way clustered standard errors via absorbed fixed effects, and overlapping event controls.
-- **Phases 2–6 (Upcoming):** Robustness matrix (12 checks), LightGBM/SHAP machine learning benchmark, neural/GNN extensions, and creation/redemption flow data integration.
-
-
-
+- **Data Pipeline Complete:** Raw holdings across 5 ETFs have been ingested, price histories downloaded, clean returns built, GICS classifications compiled and Amihud ratios computed.
+- **Econometric Model Executed:** The improved specification now includes event-specific dynamic thresholds, external energy benchmark `IXC`, receiver and year-quarter fixed effects, two-way clustered standard errors via absorbed fixed effects, overlapping event controls, receiver weight, return comovement and ETF concentration.
+- **Robustness Executed:** Robustness checks include sign splits, pre/post-COVID splits, per-ETF regressions, top-weight exclusion, trimming, placebo event assignment, randomized receiver membership, shuffled outcomes and no year-quarter fixed effects.
+- **ML/NN Executed:** The project includes OLS, LightGBM and a supervisor-aligned tanh neural network baseline. The latest ML evidence does not strongly justify a GNN as a core thesis model.
 

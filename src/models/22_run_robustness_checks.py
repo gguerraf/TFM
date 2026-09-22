@@ -38,10 +38,13 @@ PROC_DIR   = BASE_DIR / "processed"
 OUTPUT_DIR = BASE_DIR / "results"
 FIG_DIR    = BASE_DIR / "figures"
 
-MAIN_TERMS = ["b1_term", "b2_term", "b4_term", "b5_term", "asym_term"]
+MAIN_TERMS = ["b1_term", "b2_term", "b4_term", "b5_term",
+              "receiver_weight_term", "corr_term", "hhi_term", "asym_term"]
 
-BASE_FORMULA = ("AR_j ~ b1_term + b2_term + b4_term + b5_term + asym_term"
-                " + Illiq_j + Mispricing_k + Similarity_ij + Neg_e"
+BASE_FORMULA = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
+                " + receiver_weight_term + corr_term + hhi_term + asym_term"
+                " + Illiq_j + Mispricing_k + Similarity_ij"
+                " + w_j + Corr_ij_60d + HHI_etf_t + Neg_e"
                 " + C(stock_j) + C(year_quarter)")
 
 
@@ -57,10 +60,12 @@ def run_spec(df: pd.DataFrame, label: str, formula: str = None,
     if formula is None:
         formula = BASE_FORMULA
 
-    terms = ["b1_term", "b2_term", "b4_term", "b5_term"]
+    terms = ["b1_term", "b2_term", "b4_term", "b5_term",
+             "receiver_weight_term", "corr_term", "hhi_term"]
     if "asym_term" in formula:
         terms.append("asym_term")
-    terms.extend(["Illiq_j", "Mispricing_k", "Similarity_ij"])
+    terms.extend(["Illiq_j", "Mispricing_k", "Similarity_ij",
+                  "w_j", "Corr_ij_60d", "HHI_etf_t"])
     if "Neg_e" in formula:
         terms.append("Neg_e")
 
@@ -147,7 +152,9 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     pos = panel[panel["Neg_e"] == 0].copy()
     # Remove asym_term from formula (no variation in Neg_e)
     formula_nosign = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
+                      " + receiver_weight_term + corr_term + hhi_term"
                       " + Illiq_j + Mispricing_k + Similarity_ij"
+                      " + w_j + Corr_ij_60d + HHI_etf_t"
                       " + C(stock_j) + C(year_quarter)")
     r = run_spec(pos, "R5a_Positive_shocks", formula=formula_nosign,
                  log_lines=log_lines)
@@ -231,6 +238,9 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     placebo["b2_term"] = placebo["Shock_i"] * placebo["w_i"] * placebo["Illiq_j"]
     placebo["b4_term"] = placebo["Shock_i"] * placebo["w_i"] * placebo["Mispricing_k"]
     placebo["b5_term"] = placebo["Shock_i"] * placebo["Similarity_ij"]
+    placebo["receiver_weight_term"] = placebo["Shock_i"] * placebo["w_i"] * placebo["w_j"]
+    placebo["corr_term"] = placebo["Shock_i"] * placebo["w_i"] * placebo["Corr_ij_60d"]
+    placebo["hhi_term"] = placebo["Shock_i"] * placebo["w_i"] * placebo["HHI_etf_t"]
     placebo["asym_term"] = placebo["Neg_e"] * placebo["Shock_i"] * placebo["w_i"]
     placebo = placebo.drop(columns=["Shock_i_p", "w_i_p", "Neg_e_p"])
     r = run_spec(placebo, "R16_Placebo_event_assignment", log_lines=log_lines)
@@ -263,9 +273,10 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     # R21: No year-quarter FE (specification robustness)
     # ----------------------------------------------------------------------
     print("R21: No year-quarter fixed effects...")
-    formula_no_yq = ("AR_j ~ b1_term + b2_term + b4_term + b5_term "
-                     "+ asym_term + Illiq_j + Mispricing_k + Similarity_ij"
-                     " + Neg_e + C(stock_j)")
+    formula_no_yq = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
+                     " + receiver_weight_term + corr_term + hhi_term"
+                     " + asym_term + Illiq_j + Mispricing_k + Similarity_ij"
+                     " + w_j + Corr_ij_60d + HHI_etf_t + Neg_e + C(stock_j)")
     r = run_spec(panel, "R21_No_YQ_FE", formula=formula_no_yq,
                  log_lines=log_lines)
     if r: results.append(r)
@@ -361,8 +372,4 @@ if __name__ == "__main__":
     print(f"  Panel shape: {panel.shape}")
 
     results = run_all_checks(panel)
-
-
-
-
 
