@@ -63,6 +63,10 @@ TARGET_COL = "AR_j"
 TRAIN_END  = "2021-12-31"
 VAL_END    = "2023-12-31"
 # Test: 2024-01-01 onward
+NN_MAX_TRAIN_OBS = 80000
+NN_MAX_EPOCHS = 40
+NN_PATIENCE = 5
+NN_CURVE_EPOCHS = 40
 
 # ════════════════════════════════════════════════════════════════════════════════
 # STEP 0: LOAD AND PREPARE DATA
@@ -258,8 +262,19 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"  Device: {device}")
 
+    rng = np.random.default_rng(42)
+    if len(X_tr) > NN_MAX_TRAIN_OBS:
+        sample_idx = rng.choice(len(X_tr), size=NN_MAX_TRAIN_OBS, replace=False)
+        X_fit = X_tr[sample_idx]
+        y_fit = y_train[sample_idx]
+        print(f"  NN grid uses a fixed training sample: {len(X_fit):,} obs")
+    else:
+        X_fit = X_tr
+        y_fit = y_train
+
+    X_fit_t = torch.FloatTensor(X_fit).to(device)
+    y_fit_t = torch.FloatTensor(y_fit).unsqueeze(1).to(device)
     X_tr_t = torch.FloatTensor(X_tr).to(device)
-    y_tr_t = torch.FloatTensor(y_train).unsqueeze(1).to(device)
     X_va_t = torch.FloatTensor(X_va).to(device)
     y_va_t = torch.FloatTensor(y_val).unsqueeze(1).to(device)
     X_te_t = torch.FloatTensor(X_te).to(device)
@@ -304,9 +319,12 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
     # Limit to top configurations to keep runtime reasonable
     # Prioritize: 1-2-3 layers × 16-32-64 nodes × 2 LR = 18 configs
     configs_reduced = [c for c in configs
-                       if c["dropout"] == 0.0 and c["batch_size"] == 512]
+                       if c["dropout"] == 0.0
+                       and c["batch_size"] == 2048
+                       and c["hidden_layers"] in [1, 2]
+                       and c["nodes_per_layer"] in [16, 32]]
     if len(configs_reduced) == 0:
-        configs_reduced = configs[:18]
+        configs_reduced = configs[:8]
     print(f"  Running {len(configs_reduced)} reduced configurations")
 
     best_val_loss = float("inf")
@@ -315,8 +333,7 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
     grid_results = []
 
     for cfg_idx, cfg in enumerate(configs_reduced):
-        if cfg_idx % 5 == 0:
-            print(f"    Config {cfg_idx+1}/{len(configs_reduced)}: {cfg}")
+        print(f"    Config {cfg_idx+1}/{len(configs_reduced)}: {cfg}", flush=True)
 
         model = SpilloverNN(input_dim, cfg["hidden_layers"],
                             cfg["nodes_per_layer"], cfg["dropout"]).to(device)
@@ -324,13 +341,13 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
         criterion = nn.MSELoss()
 
         # Training
-        dataset = TensorDataset(X_tr_t, y_tr_t)
+        dataset = TensorDataset(X_fit_t, y_fit_t)
         loader  = DataLoader(dataset, batch_size=cfg["batch_size"], shuffle=True)
 
         best_epoch_loss = float("inf")
         patience_counter = 0
-        max_epochs = 200
-        patience = 10
+        max_epochs = NN_MAX_EPOCHS
+        patience = NN_PATIENCE
 
         for epoch in range(max_epochs):
             model.train()
@@ -369,6 +386,7 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
             "val_R2": val_r2,
             "epochs": epoch + 1,
         })
+        print(f"      val_loss={best_epoch_loss:.8f}, val_R2={val_r2:.6f}, epochs={epoch + 1}", flush=True)
 
         if best_epoch_loss < best_val_loss:
             best_val_loss = best_epoch_loss
@@ -417,11 +435,13 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
                                       lr=best_config["learning_rate"])
         train_losses = []
         val_losses = []
-        for epoch in range(200):
+        curve_dataset = TensorDataset(X_fit_t, y_fit_t)
+        curve_loader = DataLoader(curve_dataset, batch_size=best_config["batch_size"], shuffle=True)
+        for epoch in range(NN_CURVE_EPOCHS):
             model2.train()
             epoch_loss = 0
             n_batches = 0
-            for batch_X, batch_y in loader:
+            for batch_X, batch_y in curve_loader:
                 optimizer2.zero_grad()
                 pred = model2(batch_X)
                 loss = criterion(pred, batch_y)
@@ -560,4 +580,5 @@ if __name__ == "__main__":
             print("  ==> ML shows meaningful improvement. GNN may be justified.")
         else:
             print("  ==> ML shows limited improvement. GNN unlikely to add value.")
+
 

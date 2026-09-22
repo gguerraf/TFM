@@ -39,6 +39,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 from itertools import product
+from bisect import bisect_left, bisect_right
 
 # ════════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -395,32 +396,39 @@ def build_panel(shocks:      pd.DataFrame,
     within [t0 - EVENT_H, t0 + EVENT_H] to avoid contamination.
     """
     rows = []
-    hold_dates = sorted(holdings_df["atDate"].unique())
+    hold_dates = sorted(pd.to_datetime(holdings_df["atDate"].unique()).tolist())
     n_shocks   = len(shocks)
+    holdings_cache = {}
+    car_cache = {}
+    illiq_cache = {}
+    similarity_cache = {}
 
-    # ── C6: Build a set of (stock, date) shock events for fast lookup ──
+    # Build a per-stock shock calendar for fast contamination checks.
     shock_lookup = {}
     for _, s in shocks.iterrows():
         stock = s["stock_i"]
         if stock not in shock_lookup:
             shock_lookup[stock] = []
         shock_lookup[stock].append(s["t0"])
+    for stock, dates in shock_lookup.items():
+        shock_lookup[stock] = sorted(pd.to_datetime(dates).tolist())
 
     for evt_idx, (_, shock) in enumerate(shocks.iterrows()):
         if evt_idx % 500 == 0:
-            print(f"    Building panel: event {evt_idx}/{n_shocks}...")
+            print(f"    Building panel: event {evt_idx}/{n_shocks}...", flush=True)
 
         t0      = shock["t0"]
         stock_i = shock["stock_i"]
         car_i   = shock["car_i"]
         is_neg  = shock["is_negative"]
 
-        # Most recent holdings snapshot on or before t0
-        past_hold = [d for d in hold_dates if d <= t0]
-        if not past_hold:
+        pos = bisect_right(hold_dates, t0) - 1
+        if pos < 0:
             continue
-        t_hold = past_hold[-1]
-        hold_t = holdings_df[holdings_df["atDate"] == t_hold]
+        t_hold = hold_dates[pos]
+        if t_hold not in holdings_cache:
+            holdings_cache[t_hold] = holdings_df[holdings_df["atDate"] == t_hold]
+        hold_t = holdings_cache[t_hold]
 
         # Weight of shocked stock i
         row_i = hold_t[hold_t["symbol"] == stock_i]
@@ -446,21 +454,31 @@ def build_panel(shocks:      pd.DataFrame,
             # ── C6: skip if receiver j has its own shock near t0 ──
             if stock_j in shock_lookup:
                 j_shock_dates = shock_lookup[stock_j]
-                overlap = any(
-                    abs((sd - t0).days) <= EVENT_H * 2
-                    for sd in j_shock_dates
-                )
+                lo = t0 - pd.Timedelta(days=EVENT_H * 2)
+                hi = t0 + pd.Timedelta(days=EVENT_H * 2)
+                first = bisect_left(j_shock_dates, lo)
+                overlap = (first < len(j_shock_dates)
+                           and j_shock_dates[first] <= hi)
                 if overlap:
                     continue
 
             r_j  = ret_stocks[stock_j]
-            ar_j = compute_car_single(r_j, ret_bench, t0)
+            car_key = (stock_j, t0)
+            if car_key not in car_cache:
+                car_cache[car_key] = compute_car_single(r_j, ret_bench, t0)
+            ar_j = car_cache[car_key]
             if np.isnan(ar_j):
                 continue
 
-            # ── C7: NaN-preserving illiquidity (no 0.0 imputation) ──
-            illiq_j = illiquidity_proxy(stock_j, t0)
-            sim_ij  = similarity(stock_i, stock_j)
+            illiq_key = (stock_j, t0)
+            if illiq_key not in illiq_cache:
+                illiq_cache[illiq_key] = illiquidity_proxy(stock_j, t0)
+            illiq_j = illiq_cache[illiq_key]
+
+            sim_key = (stock_i, stock_j)
+            if sim_key not in similarity_cache:
+                similarity_cache[sim_key] = similarity(stock_i, stock_j)
+            sim_ij = similarity_cache[sim_key]
 
             # Interaction terms (use NaN-safe illiq for interactions)
             illiq_safe = illiq_j if not np.isnan(illiq_j) else np.nan
@@ -849,4 +867,5 @@ if __name__ == "__main__":
 
         # Run regression
         run_regression(full_panel)
+
 
