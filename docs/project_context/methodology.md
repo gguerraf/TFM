@@ -2,7 +2,6 @@
 
 > **Document:** Econometric Specification & Estimation Protocol  
 > **Master's Thesis:** *Structural Dynamics and Contagion Mechanisms of Intra-ETF Shock Transmission*  
-> **Author:** Gabriel  
 > **Location:** [`src/methodology.md`](src/methodology.md)
 
 ---
@@ -65,7 +64,7 @@ Where:
 
 > [!IMPORTANT]
 > **Elimination of Lookahead Bias:**  
-> In preliminary Phase 0 modeling (`4_spillover_model.py`), the shock cutoff used the full 11-year sample standard deviation of CARs. This introduced lookahead bias (conditioning past shock classification on future market volatility). Computing $\hat{\sigma}_{\epsilon, i}(t_0)$ dynamically from the historical estimation window strictly confines information to the pre-event information set $\mathcal{F}_{t_0 - 6}$.
+> In preliminary Phase 0 modeling (`20_estimate_baseline_model.py`), the shock cutoff used the full 11-year sample standard deviation of CARs. This introduced lookahead bias (conditioning past shock classification on future market volatility). Computing $\hat{\sigma}_{\epsilon, i}(t_0)$ dynamically from the historical estimation window strictly confines information to the pre-event information set $\mathcal{F}_{t_0 - 6}$.
 
 ### 3.2 Shock Characteristics
 Each detected shock is characterized by:
@@ -187,5 +186,7 @@ To establish the validity of the empirical results against model assumptions, th
     Re-estimates receiver abnormal returns using the leave-one-out basket return:
     $$AR_{k,t}^{(-i)} = \frac{R_{k,t} - w_{i,t} R_{i,t}}{1 - w_{i,t}}$$
     to directly compare sector benchmarking with synthetic basket residualization.
+
+
 
 

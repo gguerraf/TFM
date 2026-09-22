@@ -1,5 +1,5 @@
 """
-2d_download_benchmarks.py
+06_download_benchmarks.py
 =========================
 Downloads sector benchmark indices/ETFs for use in the market model.
 
@@ -29,14 +29,14 @@ import numpy as np
 import yfinance as yf
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR  = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR  = BASE_DIR / "processed"
 
 START_DATE = "2014-01-01"
 END_DATE   = "2026-02-12"
 
-# Required start date for each benchmark — we need data before 2015
+# Required start date for each benchmark - we need data before 2015
 # to have a full estimation window for events in early 2015
 MIN_REQUIRED_START = pd.Timestamp("2014-06-01")
 
@@ -44,31 +44,31 @@ MIN_REQUIRED_START = pd.Timestamp("2014-06-01")
 # The script will try each and report coverage before selecting the best
 BENCHMARK_CANDIDATES = {
     "SPY": [
-        ("^GSPC",    "S&P 500 Index — exact benchmark for SPY"),
+        ("^GSPC",    "S&P 500 Index - exact benchmark for SPY"),
     ],
     "XME": [
-        ("XLB",      "SPDR S&P 500 Materials ETF — XME is a subset"),
-        ("^SP500-15","S&P 500 Materials Index — direct but may lack history"),
+        ("XLB",      "SPDR S&P 500 Materials ETF - XME is a subset"),
+        ("^SP500-15","S&P 500 Materials Index - direct but may lack history"),
         ("^GSPC",    "S&P 500 fallback"),
     ],
     "XLE": [
-        ("^SP500-10","S&P 500 Energy Index — direct but may lack history"),
-        ("^GSPC",    "S&P 500 — standard fallback for sector ETFs"),
-        ("IXC",      "iShares Global Energy ETF — includes non-US"),
+        ("^SP500-10","S&P 500 Energy Index - direct but may lack history"),
+        ("^GSPC",    "S&P 500 - standard fallback for sector ETFs"),
+        ("IXC",      "iShares Global Energy ETF - includes non-US"),
     ],
     "IHE": [
-        ("XLV",      "SPDR S&P 500 Health Care ETF — IHE is a subset"),
-        ("^SP500-35","S&P 500 Health Care Index — direct"),
+        ("XLV",      "SPDR S&P 500 Health Care ETF - IHE is a subset"),
+        ("^SP500-35","S&P 500 Health Care Index - direct"),
         ("^GSPC",    "S&P 500 fallback"),
     ],
     "XLV": [
-        ("^SP500-35","S&P 500 Health Care Index — exact"),
-        ("VHT",      "Vanguard Health Care ETF — alternative, data since 2004"),
+        ("^SP500-35","S&P 500 Health Care Index - exact"),
+        ("VHT",      "Vanguard Health Care ETF - alternative, data since 2004"),
         ("^GSPC",    "S&P 500 fallback"),
     ],
 }
 
-# ─── DOWNLOAD AND EVALUATE ────────────────────────────────────────────────────
+# --- DOWNLOAD AND EVALUATE ----------------------------------------------------
 print("Downloading and evaluating benchmark candidates...")
 print(f"Required date range: {START_DATE} to {END_DATE}")
 print(f"Minimum start date for usability: {MIN_REQUIRED_START.date()}\n")
@@ -78,7 +78,7 @@ report    = []
 selected  = {}   # etf -> selected ticker
 
 for etf, candidates in BENCHMARK_CANDIDATES.items():
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")
     print(f"ETF: {etf}")
     best_ticker = None
     best_series = None
@@ -88,7 +88,7 @@ for etf, candidates in BENCHMARK_CANDIDATES.items():
             raw = yf.download(ticker, start=START_DATE, end=END_DATE,
                               auto_adjust=True, progress=False)
             if raw.empty:
-                print(f"  {ticker:<15} EMPTY — no data returned")
+                print(f"  {ticker:<15} EMPTY - no data returned")
                 report.append({"etf": etf, "ticker": ticker,
                                 "status": "empty", "start": None,
                                 "end": None, "n_days": 0,
@@ -138,7 +138,7 @@ for etf, candidates in BENCHMARK_CANDIDATES.items():
     else:
         print(f"  --> WARNING: No usable benchmark found for {etf}")
 
-# ─── BUILD BENCHMARKS DATAFRAME ───────────────────────────────────────────────
+# --- BUILD BENCHMARKS DATAFRAME -----------------------------------------------
 print(f"\n{'=' * 50}")
 print("SELECTED BENCHMARKS SUMMARY")
 print(f"{'=' * 50}")
@@ -164,7 +164,7 @@ report_df = pd.DataFrame(report)
 report_df.to_csv(PROC_DIR / "benchmark_coverage.csv", index=False)
 print(f"Coverage report saved: {PROC_DIR / 'benchmark_coverage.csv'}")
 
-# Save selected benchmarks mapping for use in 4_spillover_model.py
+# Save selected benchmarks mapping for use in 20_estimate_baseline_model.py
 mapping_df = pd.DataFrame([
     {"etf": etf, "benchmark": ticker}
     for etf, ticker in selected.items()
@@ -172,6 +172,8 @@ mapping_df = pd.DataFrame([
 mapping_df.to_csv(PROC_DIR / "benchmark_mapping.csv", index=False)
 print(f"Benchmark mapping saved: {PROC_DIR / 'benchmark_mapping.csv'}")
 
-print(f"\nNext step: update ETF_BENCHMARK in 4_spillover_model.py")
+print(f"\nNext step: update ETF_BENCHMARK in 20_estimate_baseline_model.py")
 print(f"with the selected benchmarks shown above.")
+
+
 

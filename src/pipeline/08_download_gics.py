@@ -1,5 +1,5 @@
 """
-2e_download_gics.py
+08_download_gics.py
 ===================
 Downloads GICS sector and industry classification for all constituent
 tickers from yfinance. Used to build a meaningful Similarity_ij variable
@@ -16,7 +16,7 @@ We use two levels:
     - industry : for narrow similarity (same industry = 1.0)
 
 Similarity_ij encoding:
-    1.00  same industry   (most similar — likely informational spillover)
+    1.00  same industry   (most similar - likely informational spillover)
     0.50  same sector, different industry
     0.00  different sector (co-membership only, no informational link)
 
@@ -29,7 +29,7 @@ import pandas as pd
 import yfinance as yf
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR  = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR  = BASE_DIR / "processed"
 
@@ -38,7 +38,7 @@ REQUEST_PAUSE = 0.3
 # Batch progress print every N tickers
 PRINT_EVERY   = 50
 
-# ─── LOAD TICKER LIST ─────────────────────────────────────────────────────────
+# --- LOAD TICKER LIST ---------------------------------------------------------
 print("Loading ticker list from returns_clean.csv...")
 _peek    = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
 _idx_col = _peek.columns[0]
@@ -47,7 +47,7 @@ tickers  = [c for c in pd.read_csv(
             if c != _idx_col]
 print(f"  Tickers to classify: {len(tickers):,}")
 
-# ─── DOWNLOAD GICS DATA ───────────────────────────────────────────────────────
+# --- DOWNLOAD GICS DATA -------------------------------------------------------
 print("\nDownloading GICS classifications from yfinance...")
 print("(This may take 20-30 minutes due to per-ticker requests)\n")
 
@@ -74,7 +74,7 @@ for i, ticker in enumerate(tickers):
 
     time.sleep(REQUEST_PAUSE)
 
-# ─── BUILD DATAFRAME ──────────────────────────────────────────────────────────
+# --- BUILD DATAFRAME ----------------------------------------------------------
 gics_df = pd.DataFrame(records)
 
 # Summary
@@ -97,7 +97,7 @@ print(f"  Unique industries       : {n_industries}")
 print(f"\nSector distribution:")
 print(gics_df["sector"].value_counts().to_string())
 
-# ─── SAVE ─────────────────────────────────────────────────────────────────────
+# --- SAVE ---------------------------------------------------------------------
 out_path = PROC_DIR / "gics_data.csv"
 gics_df.to_csv(out_path, index=False)
 print(f"\nSaved: {out_path}")
@@ -106,4 +106,6 @@ if failed:
     failed_df = pd.DataFrame(failed)
     failed_df.to_csv(PROC_DIR / "gics_failed.csv", index=False)
     print(f"Failed tickers: {PROC_DIR / 'gics_failed.csv'}")
+
+
 

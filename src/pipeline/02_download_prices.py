@@ -4,13 +4,13 @@ import yfinance as yf
 from pathlib import Path
 
 """
-2_download_prices.py
+02_download_prices.py
 
 Downloads daily adjusted closing prices for all constituent stocks
 and benchmarks from yfinance, using batched requests to avoid timeouts.
 
 Inputs:
-    processed/{etf}_holdings.csv  (from 1_load_holdings.py)
+    processed/{etf}_holdings.csv  (from 01_load_holdings.py)
 
 Outputs:
     processed/prices_raw.csv      Wide format: index=date, columns=tickers
@@ -102,7 +102,7 @@ for idx, batch in enumerate(batches):
     if idx < len(batches) - 1:
         time.sleep(BATCH_PAUSE)
 
-# ─── COMBINE AND SAVE ─────────────────────────────────────────────────────────
+# --- COMBINE AND SAVE ---------------------------------------------------------
 print("\nCombining all batches...")
 prices = pd.concat(price_frames, axis=1)
 
@@ -137,4 +137,6 @@ print(f"  Failed tickers saved to: {PROC_DIR / 'download_report.csv'}")
 if n_fail > 0:
     failed = report[~report["downloaded"]]["ticker"].tolist()
     print(f"  First 20 failed: {failed[:20]}")
+
+
 

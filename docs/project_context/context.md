@@ -1,7 +1,6 @@
 # Structural Dynamics and Contagion Mechanisms of Intra-ETF Shock Transmission
 
 > **Degree Program:** Master's Thesis in Data Science (Trabajo de Fin de Máster — TFM)  
-> **Author:** Gabriel  
 > **Workspace Path:** [`.`](.)  
 > **Code Directory:** [`src`](./code)  
 > **Status:** Phase 0 Complete (Pipeline Validated) | Phase 1 In Progress (Econometric Model Refinement)
@@ -131,22 +130,22 @@ All data files reside in [`.`](.):
 The analytical pipeline follows an end-to-end reproducible workflow:
 
 ```
-[0_validate_holdings.py] ──> Validates raw JSON counts and structures
+[00_validate_holdings.py] ──> Validates raw JSON counts and structures
           │
-[1_load_holdings.py]     ──> Ingests JSONs, purges non-equities, resolves M&A duplicates
+[01_load_holdings.py]     ──> Ingests JSONs, purges non-equities, resolves M&A duplicates
           │
-[2_download_prices.py]   ──> Batched yfinance download of constituent prices (prices_raw.csv)
-          ├─> [2b_retry_failed_tickers.py]  (Retries ticker formats)
-          ├─> [2c_rename_tickers.py]        (Stitches corporate name changes)
-          ├─> [2d_download_benchmarks.py]   (Downloads sector benchmarks)
-          ├─> [2e_download_gics.py]         (Downloads GICS sectors & industries)
-          └─> [2f_download_volume.py]       (Downloads volumes, computes Amihud)
+[02_download_prices.py]   ──> Batched yfinance download of constituent prices (prices_raw.csv)
+          ├─> [04_retry_missing_tickers.py]  (Retries ticker formats)
+          ├─> [05_apply_ticker_mappings.py]        (Stitches corporate name changes)
+          ├─> [06_download_benchmarks.py]   (Downloads sector benchmarks)
+          ├─> [08_download_gics.py]         (Downloads GICS sectors & industries)
+          └─> [10_download_volume.py]       (Downloads volumes, computes Amihud)
           │
-[3_compute_returns.py]   ──> Computes log returns, calendar alignment, coverage filtering
+[11_compute_returns.py]   ──> Computes log returns, calendar alignment, coverage filtering
           │
-[4_spillover_model.py]   ──> Vectorized shock detection, panel construction, OLS regression
+[20_estimate_baseline_model.py]   ──> Vectorized shock detection, panel construction, OLS regression
           │
-[5_exploratory_data_analysis.py] ──> Summary tables, concentration outliers, thesis plots
+[30_exploratory_analysis.py] ──> Summary tables, concentration outliers, thesis plots
 ```
 
 ---
@@ -154,7 +153,9 @@ The analytical pipeline follows an end-to-end reproducible workflow:
 ## 8. Current Project Status
 
 - **Phase 0 (Data Pipeline Complete):** All raw holdings across 5 ETFs ingested, price histories downloaded for 864 tickers, clean returns matrix built for 802 tickers, GICS classifications compiled, and Amihud ratios computed. Validation run on XME+XLE yielded initial empirical support for $H1, H2, H5$.
-- **Phase 1 (Econometric Model Refinement — Current Focus):** Transitioning from preliminary `4_spillover_model.py` to an enhanced specification incorporating event-specific dynamic thresholds, external energy benchmark `IXC`, receiver stock main effects, year-quarter time fixed effects, two-way clustered standard errors, and overlapping event controls.
+- **Phase 1 (Econometric Model Refinement - Completed):** The improved specification now incorporates event-specific dynamic thresholds, external energy benchmark `IXC`, receiver stock main effects, year-quarter time fixed effects, two-way clustered standard errors via absorbed fixed effects, and overlapping event controls.
 - **Phases 2–6 (Upcoming):** Robustness matrix (12 checks), LightGBM/SHAP machine learning benchmark, neural/GNN extensions, and creation/redemption flow data integration.
+
+
 
 

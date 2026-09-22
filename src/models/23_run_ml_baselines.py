@@ -1,5 +1,5 @@
 """
-4c_ml_baseline.py
+23_run_ml_baselines.py
 ==================
 Machine Learning baseline for the intra-ETF spillover model.
 
@@ -13,7 +13,7 @@ Neural network follows supervisor guidance:
   - MSE loss, Adam optimizer
 
 Requires:
-    results/panel_improved.csv  (from 4a_improved_model.py)
+    results/panel_improved.csv  (from 21_estimate_improved_model.py)
     processed/returns_clean.csv (for additional features)
 
 Outputs:
@@ -40,9 +40,9 @@ import lightgbm as lgb
 import shap
 import json
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # CONFIGURATION
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
@@ -68,15 +68,15 @@ NN_MAX_EPOCHS = 40
 NN_PATIENCE = 5
 NN_CURVE_EPOCHS = 40
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 0: LOAD AND PREPARE DATA
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def load_and_prepare():
     """Load panel and prepare features for ML."""
     panel_path = OUTPUT_DIR / "panel_improved.csv"
     if not panel_path.exists():
-        print(f"[ERROR] {panel_path} not found. Run 4a_improved_model.py first.")
+        print(f"[ERROR] {panel_path} not found. Run 21_estimate_improved_model.py first.")
         exit(1)
 
     panel = pd.read_csv(panel_path, parse_dates=["t0"])
@@ -140,9 +140,9 @@ def evaluate(y_true, y_pred, label):
             "DirAcc": dir_acc}
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 1: LIGHTGBM BASELINE
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
                  feature_names, log_lines):
@@ -227,9 +227,9 @@ def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
     return model, r_test
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 2: NEURAL NETWORK (tanh activation, modest grid)
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
                        feature_names, log_lines):
@@ -300,32 +300,28 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
         def forward(self, x):
             return self.net(x)
 
-    # Hyperparameter grid (modest, per supervisor guidance)
+    # Modest grid focused on the supervisor's suggested parameters.
     grid = {
         "hidden_layers": [1, 2, 3],
         "nodes_per_layer": [16, 32, 64],
-        "learning_rate": [0.001, 0.01],
-        "dropout": [0.0, 0.2],
-        "batch_size": [512, 2048],
+    }
+    fixed_params = {
+        "learning_rate": 0.01,
+        "dropout": 0.0,
+        "batch_size": 2048,
     }
 
-    # Generate all combinations
     from itertools import product as itertools_product
-    keys = list(grid.keys())
-    values = list(grid.values())
-    configs = [dict(zip(keys, combo)) for combo in itertools_product(*values)]
-    print(f"  Grid search: {len(configs)} configurations")
-
-    # Limit to top configurations to keep runtime reasonable
-    # Prioritize: 1-2-3 layers × 16-32-64 nodes × 2 LR = 18 configs
-    configs_reduced = [c for c in configs
-                       if c["dropout"] == 0.0
-                       and c["batch_size"] == 2048
-                       and c["hidden_layers"] in [1, 2]
-                       and c["nodes_per_layer"] in [16, 32]]
-    if len(configs_reduced) == 0:
-        configs_reduced = configs[:8]
-    print(f"  Running {len(configs_reduced)} reduced configurations")
+    configs_reduced = []
+    for hidden_layers, nodes_per_layer in itertools_product(
+            grid["hidden_layers"], grid["nodes_per_layer"]):
+        configs_reduced.append({
+            "hidden_layers": hidden_layers,
+            "nodes_per_layer": nodes_per_layer,
+            **fixed_params,
+        })
+    print(f"  Grid search: {len(configs_reduced)} configurations")
+    print("  Activation is fixed to tanh; the grid varies hidden layers and nodes.")
 
     best_val_loss = float("inf")
     best_config = None
@@ -475,9 +471,9 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
     return final_model, r_test
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 3: OLS BASELINE FOR COMPARISON
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def ols_baseline(X_train, y_train, X_test, y_test, feature_names, log_lines):
     """Simple OLS baseline for comparison (no fixed effects)."""
@@ -506,9 +502,9 @@ def ols_baseline(X_train, y_train, X_test, y_test, feature_names, log_lines):
     return r_test
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # MAIN
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 if __name__ == "__main__":
     log_lines = []
@@ -580,5 +576,8 @@ if __name__ == "__main__":
             print("  ==> ML shows meaningful improvement. GNN may be justified.")
         else:
             print("  ==> ML shows limited improvement. GNN unlikely to add value.")
+
+
+
 
 

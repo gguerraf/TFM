@@ -1,9 +1,9 @@
 """
-get_all_companies_deduped.py
+deduplicate_company_universe.py
 ============================
 Deduplicates all_companies.csv by grouping tickers that refer to the
 same underlying company. Two tickers are considered the same company if:
-    1. They share the same ISIN (primary key — most reliable), OR
+    1. They share the same ISIN (primary key - most reliable), OR
     2. Their cleaned names are identical (fallback for missing ISINs)
 
 For each group, the canonical ticker is the shortest clean US-format
@@ -18,16 +18,16 @@ import re
 import pandas as pd
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR = BASE_DIR / "processed"
 
-# ─── LOAD ─────────────────────────────────────────────────────────────────────
+# --- LOAD ---------------------------------------------------------------------
 print("Loading all_companies.csv...")
 df = pd.read_csv(PROC_DIR / "all_companies.csv", parse_dates=["first_seen", "last_seen"])
 print(f"  Input: {len(df):,} rows")
 
-# ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────────
+# --- HELPER FUNCTIONS ---------------------------------------------------------
 
 def clean_name(name: str) -> str:
     """
@@ -70,7 +70,7 @@ def ticker_priority(ticker: str) -> int:
     return score
 
 
-# ─── BUILD ISIN GROUPS ────────────────────────────────────────────────────────
+# --- BUILD ISIN GROUPS --------------------------------------------------------
 print("Grouping by ISIN...")
 
 df["name_clean"] = df["name"].apply(clean_name)
@@ -120,7 +120,7 @@ for name, indices in name_to_indices.items():
     for i in range(1, len(indices)):
         union(indices[0], indices[i])
 
-# ─── BUILD DEDUPLICATED TABLE ─────────────────────────────────────────────────
+# --- BUILD DEDUPLICATED TABLE -------------------------------------------------
 print("Building deduplicated company table...")
 
 df["group"] = df.index.map(find)
@@ -175,7 +175,7 @@ deduped = pd.DataFrame(records)
 deduped = deduped.sort_values(["n_etfs", "canonical_ticker"],
                                ascending=[False, True]).reset_index(drop=True)
 
-# ─── SUMMARY ──────────────────────────────────────────────────────────────────
+# --- SUMMARY ------------------------------------------------------------------
 print(f"\n{'=' * 55}")
 print(f"DEDUPLICATION SUMMARY")
 print(f"{'=' * 55}")
@@ -196,7 +196,7 @@ merged = deduped[deduped["n_tickers"] > 1][
 ].head(15)
 print(merged.to_string(index=False))
 
-# ─── SAVE ─────────────────────────────────────────────────────────────────────
+# --- SAVE ---------------------------------------------------------------------
 out1 = PROC_DIR / "all_companies_deduped.csv"
 deduped.to_csv(out1, index=False)
 print(f"\nSaved: {out1}  ({len(deduped):,} unique companies)")
@@ -207,4 +207,6 @@ pd.DataFrame([
     for k, v in ticker_map.items()
 ]).sort_values("original_ticker").to_csv(out2, index=False)
 print(f"Saved: {out2}  ({len(ticker_map):,} ticker mappings)")
+
+
 

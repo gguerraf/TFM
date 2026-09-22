@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 
 """
-1_load_holdings.py
+01_load_holdings.py
 ==================
 Reads all JSON holdings files for each ETF and builds one DataFrame per ETF.
 Result: dictionary `holdings` with key = ETF symbol and value = DataFrame.
@@ -103,9 +103,9 @@ def clean_holdings(df: pd.DataFrame) -> pd.DataFrame:
            These correspond to cash positions, USD balances, and liquidity
            funds that appear with no valid ticker.
 
-        3. For remaining duplicate (atDate, symbol) pairs — typically caused
+        3. For remaining duplicate (atDate, symbol) pairs - typically caused
            by M&A transitions where two company names temporarily share the
-           same ticker — keep the row with the highest percent (largest
+           same ticker - keep the row with the highest percent (largest
            position), which represents the dominant/current holding.
 
     Note on weights after cleaning:
@@ -129,7 +129,7 @@ def clean_holdings(df: pd.DataFrame) -> pd.DataFrame:
         (df["symbol"].str.strip() != "-")
     ]
 
-    # Step 3: resolve M&A duplicates — keep highest weight per (atDate, symbol)
+    # Step 3: resolve M&A duplicates - keep highest weight per (atDate, symbol)
     df = df.sort_values("percent", ascending=False)
     df = df.drop_duplicates(subset=["atDate", "symbol"], keep="first")
     df = df.sort_values(["atDate", "symbol"]).reset_index(drop=True)
@@ -178,3 +178,5 @@ for etf, df in holdings.items():
         out_path = OUTPUT_DIR / f"{etf.lower()}_holdings.csv"
         df.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
+
+

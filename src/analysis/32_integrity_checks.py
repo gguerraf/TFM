@@ -5,7 +5,7 @@ BASE_DIR = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR = BASE_DIR / "processed"
 ETF_LIST = ["SPY", "XME", "XLE", "IHE", "XLV"]
 
-# Estas son las columnas que extraemos en 1_load_holdings.py
+# Columns extracted in 01_load_holdings.py
 columns_to_check = ["atDate", "assetType", "cusip", "isin", "name", "percent", "share", "symbol", "value"]
 
 results = []
@@ -19,7 +19,7 @@ for etf in ETF_LIST:
         if col in df.columns:
             # Contamos NaNs
             nans = df[col].isna().sum()
-            # Contamos strings vacíos o guiones si es de tipo texto
+            # Count empty strings or dashes in text columns
             if df[col].dtype == object:
                 empties = df[col].astype(str).str.strip().isin(["", "-", "nan", "None"]).sum()
             else:
@@ -33,7 +33,10 @@ for etf in ETF_LIST:
             
     results.append(missing_pcts)
 
-# Imprimir la tabla en formato Markdown para que sea fácil de copiar
+# Print the table in Markdown format for easy copying
 report_df = pd.DataFrame(results)
 print("\n% MISSING\n")
 print(report_df.to_markdown(index=False))
+
+
+

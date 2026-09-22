@@ -5,7 +5,7 @@ import yfinance as yf
 from pathlib import Path
 
 """
-2b_retry_failed_tickers.py
+04_retry_missing_tickers.py
 ==========================
 Retries failed ticker downloads by cleaning symbol formats to match
 Yahoo Finance conventions, then appends new prices to prices_raw.csv.
@@ -19,15 +19,15 @@ Cleaning rules applied (in order):
     6. Remove numeric-only codes: "9876590D" -> skip (not a real ticker)
 
 Inputs:
-    processed/download_report.csv   (from 2_download_prices.py)
-    processed/prices_raw.csv        (from 2_download_prices.py)
+    processed/download_report.csv   (from 02_download_prices.py)
+    processed/prices_raw.csv        (from 02_download_prices.py)
 
 Outputs:
     processed/prices_raw.csv        Updated with newly recovered tickers
     processed/download_report.csv   Updated with retry results
 """
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR  = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR  = BASE_DIR / "processed"
 
@@ -36,7 +36,7 @@ END_DATE    = "2026-02-12"
 BATCH_SIZE  = 50    # smaller batches for retry to reduce noise
 BATCH_PAUSE = 2
 
-# Patterns that are clearly not real Yahoo tickers — skip these entirely
+# Patterns that are clearly not real Yahoo tickers - skip these entirely
 SKIP_PATTERNS = [
     r'^\d+[A-Z]?$',           # pure numeric codes: "9876590D", "2481632D"
     r'^\d+\.\d+',             # numeric with dots: "46729666"
@@ -48,7 +48,7 @@ SKIP_PATTERNS = [
     r'^[0-9]',                # starts with digit (usually foreign or internal)
 ]
 
-# ─── TICKER CLEANING FUNCTION ─────────────────────────────────────────────────
+# --- TICKER CLEANING FUNCTION -------------------------------------------------
 def clean_ticker(symbol: str) -> str | None:
     """
     Attempts to convert a failed ticker symbol to Yahoo Finance format.
@@ -100,13 +100,13 @@ def clean_ticker(symbol: str) -> str | None:
     return s
 
 
-# ─── LOAD FAILED TICKERS ──────────────────────────────────────────────────────
+# --- LOAD FAILED TICKERS ------------------------------------------------------
 print("Loading download report...")
 report = pd.read_csv(PROC_DIR / "download_report.csv")
 failed = report[~report["downloaded"]]["ticker"].tolist()
 print(f"  Failed tickers to retry: {len(failed):,}")
 
-# ─── APPLY CLEANING ───────────────────────────────────────────────────────────
+# --- APPLY CLEANING -----------------------------------------------------------
 print("\nApplying ticker cleaning rules...")
 
 # Build mapping: original_symbol -> cleaned_symbol
@@ -126,7 +126,7 @@ print(f"  Symbols to retry after cleaning   : {len(to_retry):,}")
 cleaned_unique = list(set(to_retry.values()))
 print(f"  Unique cleaned tickers to attempt : {len(cleaned_unique):,}")
 
-# ─── LOAD EXISTING PRICES TO AVOID RE-DOWNLOADING ─────────────────────────────
+# --- LOAD EXISTING PRICES TO AVOID RE-DOWNLOADING -----------------------------
 print("\nLoading existing prices_raw.csv...")
 prices_existing = pd.read_csv(PROC_DIR / "prices_raw.csv",
                                index_col="date", parse_dates=True)
@@ -140,7 +140,7 @@ print(f"  New tickers to attempt    : {len(cleaned_to_download):,}")
 if not cleaned_to_download:
     print("\nNothing new to download. All cleaned tickers already in prices_raw.csv.")
 else:
-    # ─── BATCH DOWNLOAD ───────────────────────────────────────────────────────
+    # --- BATCH DOWNLOAD -------------------------------------------------------
     print(f"\nDownloading {len(cleaned_to_download):,} tickers "
           f"in batches of {BATCH_SIZE}...")
 
@@ -190,7 +190,7 @@ else:
         if idx < len(batches) - 1:
             time.sleep(BATCH_PAUSE)
 
-    # ─── MERGE WITH EXISTING PRICES ───────────────────────────────────────────
+    # --- MERGE WITH EXISTING PRICES -------------------------------------------
     if new_frames:
         print(f"\nMerging {len(new_frames)} new batches into prices_raw.csv...")
         new_prices = pd.concat(new_frames, axis=1)
@@ -249,4 +249,6 @@ print(f"  Permanently failed      : {n_fail:,}")
 print(f"\nThese are likely delisted stocks, internal fund codes,")
 print(f"or foreign-listed securities not available on Yahoo Finance.")
 print(f"They will be automatically excluded from the model panel.")
+
+
 

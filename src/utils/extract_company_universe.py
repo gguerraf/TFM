@@ -1,5 +1,5 @@
 """
-get_all_companies.py
+extract_company_universe.py
 ====================
 Extracts all unique companies that appeared in any of the 5 ETFs
 between the start and end of the holdings data.
@@ -12,13 +12,13 @@ Outputs:
 import pandas as pd
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR = BASE_DIR / "processed"
 
 ETF_LIST = ["SPY", "XME", "XLE", "IHE", "XLV"]
 
-# ─── LOAD ALL HOLDINGS ────────────────────────────────────────────────────────
+# --- LOAD ALL HOLDINGS --------------------------------------------------------
 print("Loading holdings CSVs...\n")
 
 all_records = []
@@ -31,7 +31,7 @@ for etf in ETF_LIST:
     date_max  = df["atDate"].max().date()
     n_symbols = df["symbol"].nunique()
 
-    print(f"  {etf}: {n_dates} dates  |  {date_min} → {date_max}  |  "
+    print(f"  {etf}: {n_dates} dates  |  {date_min} -> {date_max}  |  "
           f"{n_symbols} unique symbols")
 
     df["etf"] = etf
@@ -39,12 +39,12 @@ for etf in ETF_LIST:
 
 full_df = pd.concat(all_records, ignore_index=True)
 
-# ─── OVERALL DATE RANGE ───────────────────────────────────────────────────────
+# --- OVERALL DATE RANGE -------------------------------------------------------
 global_start = full_df["atDate"].min()
 global_end   = full_df["atDate"].max()
-print(f"\nOverall date range: {global_start.date()} → {global_end.date()}")
+print(f"\nOverall date range: {global_start.date()} -> {global_end.date()}")
 
-# ─── BUILD UNIQUE COMPANIES TABLE ─────────────────────────────────────────────
+# --- BUILD UNIQUE COMPANIES TABLE ---------------------------------------------
 # For each (symbol, name) pair, record:
 #   - which ETFs it appeared in
 #   - first and last date seen across all ETFs
@@ -80,14 +80,14 @@ company_stats = company_stats.sort_values(
     ["n_etfs", "ticker"], ascending=[False, True]
 ).reset_index(drop=True)
 
-# ─── SUMMARY ──────────────────────────────────────────────────────────────────
+# --- SUMMARY ------------------------------------------------------------------
 print(f"\n{'=' * 55}")
 print(f"SUMMARY")
 print(f"{'=' * 55}")
 print(f"  Total unique tickers      : {len(company_stats):,}")
 print(f"  In only 1 ETF             : {(company_stats['n_etfs'] == 1).sum():,}")
 print(f"  In 2+ ETFs (cross-listed) : {(company_stats['n_etfs'] >= 2).sum():,}")
-print(f"  Data range                : {global_start.date()} → {global_end.date()}")
+print(f"  Data range                : {global_start.date()} -> {global_end.date()}")
 
 print(f"\nBreakdown by ETF:")
 for etf in ETF_LIST:
@@ -98,13 +98,13 @@ print(f"\nSample of cross-listed tickers (appear in 2+ ETFs):")
 cross = company_stats[company_stats["n_etfs"] >= 2][["ticker","name","etfs"]].head(10)
 print(cross.to_string(index=False))
 
-# ─── SAVE ─────────────────────────────────────────────────────────────────────
+# --- SAVE ---------------------------------------------------------------------
 # Full table
 out1 = PROC_DIR / "all_companies.csv"
 company_stats.to_csv(out1, index=False)
 print(f"\nSaved: {out1}  ({len(company_stats):,} rows)")
 
-# One row per (ticker, ETF) combination — useful for membership queries
+# One row per (ticker, ETF) combination - useful for membership queries
 etf_membership = (
     full_df.groupby(["symbol", "etf"])
     .agg(
@@ -124,4 +124,6 @@ etf_membership = etf_membership.sort_values(["etf", "ticker"]).reset_index(drop=
 out2 = PROC_DIR / "all_companies_etf.csv"
 etf_membership.to_csv(out2, index=False)
 print(f"Saved: {out2}  ({len(etf_membership):,} rows)")
+
+
 

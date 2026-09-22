@@ -1,5 +1,5 @@
 """
-0_validate_holdings.py
+00_validate_holdings.py
 ======================
 Validation script to verify that all JSON files were read correctly
 and that the resulting CSVs are complete and consistent.
@@ -18,7 +18,7 @@ import json
 import pandas as pd
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR  = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR  = BASE_DIR / "processed"
 
@@ -33,7 +33,7 @@ ETF_FOLDERS = {
 EXPECTED_START = pd.Timestamp("2015-01-01")
 EXPECTED_END   = pd.Timestamp("2026-02-12")
 
-# ─── HELPERS ──────────────────────────────────────────────────────────────────
+# --- HELPERS ------------------------------------------------------------------
 
 def count_json_holdings(folder_path: Path) -> tuple:
     """
@@ -62,7 +62,7 @@ def load_csv(etf: str) -> pd.DataFrame:
     path = PROC_DIR / f"{etf.lower()}_holdings.csv"
     return pd.read_csv(path, parse_dates=["atDate"])
 
-# ─── VALIDATION ───────────────────────────────────────────────────────────────
+# --- VALIDATION ---------------------------------------------------------------
 
 print("=" * 70)
 print("HOLDINGS VALIDATION REPORT")
@@ -72,11 +72,11 @@ all_ok = True
 
 for etf, folder_name in ETF_FOLDERS.items():
     folder_path = BASE_DIR / folder_name
-    print(f"\n{'─' * 60}")
+    print(f"\n{'-' * 60}")
     print(f"ETF: {etf}")
-    print(f"{'─' * 60}")
+    print(f"{'-' * 60}")
 
-    # ── Check 1: CSV exists ───────────────────────────────────────────────────
+    # -- Check 1: CSV exists ---------------------------------------------------
     csv_path = PROC_DIR / f"{etf.lower()}_holdings.csv"
     if not csv_path.exists():
         print(f"  [FAIL] CSV not found: {csv_path}")
@@ -84,10 +84,10 @@ for etf, folder_name in ETF_FOLDERS.items():
         continue
     print(f"  [OK]   CSV file found: {csv_path.name}")
 
-    # ── Load CSV ──────────────────────────────────────────────────────────────
+    # -- Load CSV --------------------------------------------------------------
     df = load_csv(etf)
 
-    # ── Check 2: Row count matches JSON source ────────────────────────────────
+    # -- Check 2: Row count matches JSON source --------------------------------
     n_json, json_rows, n_empty = count_json_holdings(folder_path)
     csv_rows = len(df)
 
@@ -103,7 +103,7 @@ for etf, folder_name in ETF_FOLDERS.items():
         print(f"  [WARN] Row count mismatch: CSV has {diff:+,} rows vs JSONs.")
         all_ok = False
 
-    # ── Check 3: Date range coverage ─────────────────────────────────────────
+    # -- Check 3: Date range coverage -----------------------------------------
     actual_start = df["atDate"].min()
     actual_end   = df["atDate"].max()
     print(f"  [INFO] Date range: {actual_start.date()} to {actual_end.date()}")
@@ -122,7 +122,7 @@ for etf, folder_name in ETF_FOLDERS.items():
               f"({EXPECTED_END.date()}).")
         all_ok = False
 
-    # ── Check 4: Unique dates match JSON file count ───────────────────────────
+    # -- Check 4: Unique dates match JSON file count ---------------------------
     n_unique_dates = df["atDate"].nunique()
     # JSON files with holdings (non-empty)
     n_json_with_data = n_json - n_empty
@@ -134,9 +134,9 @@ for etf, folder_name in ETF_FOLDERS.items():
     else:
         diff = n_unique_dates - n_json_with_data
         print(f"  [WARN] Date/JSON count mismatch: {diff:+,}. "
-              f"(Could be multiple snapshots per day — check if expected.)")
+              f"(Could be multiple snapshots per day - check if expected.)")
 
-    # ── Check 5: No duplicate (atDate, symbol) pairs ─────────────────────────
+    # -- Check 5: No duplicate (atDate, symbol) pairs -------------------------
     dupes = df.duplicated(subset=["atDate", "symbol"]).sum()
     if dupes == 0:
         print(f"  [OK]   No duplicate (date, symbol) pairs.")
@@ -144,7 +144,7 @@ for etf, folder_name in ETF_FOLDERS.items():
         print(f"  [WARN] {dupes:,} duplicate (date, symbol) pairs found.")
         all_ok = False
 
-    # ── Check 6: Weight sanity — sum of percent per date ─────────────────────
+    # -- Check 6: Weight sanity - sum of percent per date ---------------------
     # Filter out non-equity rows (cash, derivatives with negative percent, etc.)
     equity_df = df[df["percent"] > 0].copy()
     weight_sum = equity_df.groupby("atDate")["percent"].sum()
@@ -152,7 +152,7 @@ for etf, folder_name in ETF_FOLDERS.items():
     pct_dates_near_100 = ((weight_sum >= 95) & (weight_sum <= 105)).mean() * 100
 
     print(f"  [INFO] Median sum of percent per date : {median_sum:.2f}%")
-    print(f"  [INFO] Dates where sum is 95–105%     : {pct_dates_near_100:.1f}%")
+    print(f"  [INFO] Dates where sum is 95-105%     : {pct_dates_near_100:.1f}%")
 
     if pct_dates_near_100 >= 80:
         print(f"  [OK]   Weight sums look reasonable.")
@@ -161,7 +161,7 @@ for etf, folder_name in ETF_FOLDERS.items():
               f"Check for missing holdings or data quality issues.")
         all_ok = False
 
-    # ── Check 7: Missing values in key columns ────────────────────────────────
+    # -- Check 7: Missing values in key columns --------------------------------
     for col in ["atDate", "symbol", "percent"]:
         n_missing = df[col].isna().sum()
         if n_missing == 0:
@@ -170,16 +170,18 @@ for etf, folder_name in ETF_FOLDERS.items():
             print(f"  [WARN] {n_missing:,} missing values in '{col}'.")
             all_ok = False
 
-    # ── Summary stats for this ETF ────────────────────────────────────────────
+    # -- Summary stats for this ETF --------------------------------------------
     avg_holdings_per_date = len(df) / n_unique_dates
     print(f"  [INFO] Avg holdings per date  : {avg_holdings_per_date:.1f}")
     print(f"  [INFO] Unique symbols total   : {df['symbol'].nunique():,}")
 
-# ─── FINAL VERDICT ────────────────────────────────────────────────────────────
+# --- FINAL VERDICT ------------------------------------------------------------
 print(f"\n{'=' * 70}")
 if all_ok:
     print("FINAL RESULT: ALL CHECKS PASSED. Data looks complete and consistent.")
 else:
     print("FINAL RESULT: SOME WARNINGS FOUND. Review the items marked [WARN].")
 print("=" * 70)
+
+
 

@@ -1,5 +1,5 @@
 """
-2c_rename_tickers.py
+05_apply_ticker_mappings.py
 ====================
 Handles tickers that changed name, were acquired, or were relisted under
 a different symbol. For each case, downloads the current ticker's history
@@ -19,14 +19,14 @@ import numpy as np
 import yfinance as yf
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR  = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR  = BASE_DIR / "processed"
 
 START_DATE = "2014-01-01"
 END_DATE   = "2026-02-12"
 
-# ─── TICKER MAPPING ───────────────────────────────────────────────────────────
+# --- TICKER MAPPING -----------------------------------------------------------
 TICKER_MAP = {
     # Renames (company still public, different ticker)
     "ANTM":  {"new": "ELV",   "event_date": "2022-06-28", "action": "rename",
@@ -100,49 +100,49 @@ TICKER_MAP = {
     "RETA":  {"new": None, "event_date": "2023-03-08",  "action": "acquired",
                "note": "Reata -> Biogen"},
 
-    # Still active — just failed download previously
+    # Still active - just failed download previously
     "MMC":   {"new": "MMC",  "event_date": None, "action": "retry",
-               "note": "Marsh McLennan — active"},
+               "note": "Marsh McLennan - active"},
     "IPG":   {"new": "IPG",  "event_date": None, "action": "retry",
-               "note": "Interpublic Group — active"},
+               "note": "Interpublic Group - active"},
     "HES":   {"new": "HES",  "event_date": None, "action": "retry",
-               "note": "Hess Corp — active"},
+               "note": "Hess Corp - active"},
     "MRO":   {"new": "MRO",  "event_date": None, "action": "retry",
-               "note": "Marathon Oil — active"},
+               "note": "Marathon Oil - active"},
     "WBA":   {"new": "WBA",  "event_date": None, "action": "retry",
-               "note": "Walgreens — active"},
+               "note": "Walgreens - active"},
     "CDAY":  {"new": "CDAY", "event_date": None, "action": "retry",
-               "note": "Ceridian HCM — active"},
+               "note": "Ceridian HCM - active"},
     "FBHS":  {"new": "FBHS", "event_date": None, "action": "retry",
-               "note": "Fortune Brands — active"},
+               "note": "Fortune Brands - active"},
     "ARNC":  {"new": "ARNC", "event_date": None, "action": "retry",
-               "note": "Arconic — active"},
+               "note": "Arconic - active"},
     "ARCH":  {"new": "ARCH", "event_date": None, "action": "retry",
-               "note": "Arch Resources — active"},
+               "note": "Arch Resources - active"},
     "CEIX":  {"new": "CEIX", "event_date": None, "action": "retry",
-               "note": "CONSOL Energy — active"},
+               "note": "CONSOL Energy - active"},
     "SCHN":  {"new": "SCHN", "event_date": None, "action": "retry",
-               "note": "Schnitzer Steel — active"},
+               "note": "Schnitzer Steel - active"},
     "TMST":  {"new": "TMST", "event_date": None, "action": "retry",
-               "note": "TimkenSteel — active"},
+               "note": "TimkenSteel - active"},
     "HAYN":  {"new": "HAYN", "event_date": None, "action": "retry",
-               "note": "Haynes International — active"},
+               "note": "Haynes International - active"},
     "AERI":  {"new": "AERI", "event_date": None, "action": "retry",
-               "note": "Aerie Pharmaceuticals — active"},
+               "note": "Aerie Pharmaceuticals - active"},
     "ATRS":  {"new": "ATRS", "event_date": None, "action": "retry",
-               "note": "Antares Pharma — active"},
+               "note": "Antares Pharma - active"},
     "ZGNX":  {"new": "ZGNX", "event_date": None, "action": "retry",
-               "note": "Zogenix — active"},
+               "note": "Zogenix - active"},
     "RVNC":  {"new": "RVNC", "event_date": None, "action": "retry",
-               "note": "Revance Therapeutics — active"},
+               "note": "Revance Therapeutics - active"},
     "ITCI":  {"new": "ITCI", "event_date": None, "action": "retry",
-               "note": "Intra-Cellular Therapies — active"},
+               "note": "Intra-Cellular Therapies - active"},
     "CBAY":  {"new": "CBAY", "event_date": None, "action": "retry",
-               "note": "CymaBay Therapeutics — active"},
+               "note": "CymaBay Therapeutics - active"},
 }
 
 
-# ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────────
+# --- HELPER FUNCTIONS ---------------------------------------------------------
 
 def download_ticker(ticker: str,
                     start: str = START_DATE,
@@ -189,7 +189,7 @@ def to_dt_series(s) -> pd.Series:
         return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
 
 
-# ─── LOAD EXISTING PRICES ─────────────────────────────────────────────────────
+# --- LOAD EXISTING PRICES -----------------------------------------------------
 print("Loading prices_raw.csv...")
 
 _peek      = pd.read_csv(PROC_DIR / "prices_raw.csv", nrows=0)
@@ -203,7 +203,7 @@ prices.index = pd.to_datetime(prices.index)   # guarantee DatetimeIndex
 print(f"  Current shape: {prices.shape[0]} dates x {prices.shape[1]} tickers")
 
 
-# ─── PROCESS EACH MAPPING ─────────────────────────────────────────────────────
+# --- PROCESS EACH MAPPING -----------------------------------------------------
 report_rows = []
 n_patched   = 0
 n_skipped   = 0
@@ -216,7 +216,7 @@ for old_ticker, info in TICKER_MAP.items():
     action      = info["action"]
     note        = info["note"]
 
-    # ── RETRY: ticker still active, just failed before ────────────────────────
+    # -- RETRY: ticker still active, just failed before ------------------------
     if action == "retry":
         if old_ticker in prices.columns and not prices[old_ticker].dropna().empty:
             print(f"  [SKIP] {old_ticker}: already in prices_raw")
@@ -241,7 +241,7 @@ for old_ticker, info in TICKER_MAP.items():
                                  "note": note})
         continue
 
-    # ── RENAME: concatenate old + new series ──────────────────────────────────
+    # -- RENAME: concatenate old + new series ----------------------------------
     if action == "rename":
         # Get old series from existing prices or download it
         if old_ticker in prices.columns:
@@ -252,7 +252,7 @@ for old_ticker, info in TICKER_MAP.items():
         # Download new series
         new_series = download_ticker(new_ticker)
 
-        # Both empty — nothing to do
+        # Both empty - nothing to do
         if len(old_series) == 0 and len(new_series) == 0:
             print(f"  [FAIL] {old_ticker} -> {new_ticker}: no data for either")
             report_rows.append({"old_ticker": old_ticker, "new_ticker": new_ticker,
@@ -279,7 +279,7 @@ for old_ticker, info in TICKER_MAP.items():
                              "action": action, "status": "concatenated",
                              "note": note})
 
-    # ── ACQUIRED: use old series history only ─────────────────────────────────
+    # -- ACQUIRED: use old series history only ---------------------------------
     elif action == "acquired":
         if old_ticker in prices.columns and not prices[old_ticker].dropna().empty:
             print(f"  [SKIP] {old_ticker}: acquired, history already present")
@@ -303,18 +303,18 @@ for old_ticker, info in TICKER_MAP.items():
                                      "note": note})
 
 
-# ─── SAVE UPDATED PRICES ──────────────────────────────────────────────────────
+# --- SAVE UPDATED PRICES ------------------------------------------------------
 prices = prices.loc[:, ~prices.columns.duplicated()]
 prices.sort_index(inplace=True)
 prices.to_csv(PROC_DIR / "prices_raw.csv")
 print(f"\nprices_raw.csv updated: "
       f"{prices.shape[0]} dates x {prices.shape[1]} tickers")
 
-# ─── SAVE RENAME REPORT ───────────────────────────────────────────────────────
+# --- SAVE RENAME REPORT -------------------------------------------------------
 report_df = pd.DataFrame(report_rows)
 report_df.to_csv(PROC_DIR / "rename_report.csv", index=False)
 
-# ─── FINAL SUMMARY ────────────────────────────────────────────────────────────
+# --- FINAL SUMMARY ------------------------------------------------------------
 print(f"\n{'=' * 55}")
 print(f"RENAME / PATCH SUMMARY")
 print(f"{'=' * 55}")
@@ -325,3 +325,5 @@ for status, count in report_df["status"].value_counts().items():
     print(f"  {status:<22}: {count:,}")
 print(f"\nTotal tickers in prices_raw.csv : {prices.shape[1]:,}")
 print(f"Rename report saved : {PROC_DIR / 'rename_report.csv'}")
+
+

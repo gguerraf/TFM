@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR = BASE_DIR / "processed"
 FIG_DIR  = BASE_DIR / "figures"
@@ -39,7 +39,7 @@ sns.set_context("paper", font_scale=1.2)
 
 print("Starting Exploratory Data Analysis (EDA) & Quality Report...\n")
 
-# ─── 1. DATA QUALITY & CALENDAR ANALYSIS (DIRECT JSON READ) ───────────────────
+# --- 1. DATA QUALITY & CALENDAR ANALYSIS (DIRECT JSON READ) -------------------
 print("="*80)
 print("1. CALENDAR & MISSING DATA ANALYSIS (READING RAW JSONs)")
 print("="*80)
@@ -142,9 +142,9 @@ for etf in ETF_LIST:
 df_calendar = pd.DataFrame(calendar_results)
 calendar_path = PROC_DIR / "calendar_analysis_jsons.csv"
 df_calendar.to_csv(calendar_path, index=False)
-print(f"\n✅ Calendar Analysis table saved to: {calendar_path}")
+print(f"\n[OK] Calendar Analysis table saved to: {calendar_path}")
 
-# ─── 2. OUTLIERS TABLE (CONCENTRATION) ────────────────────────────────────────
+# --- 2. OUTLIERS TABLE (CONCENTRATION) ----------------------------------------
 print("\n" + "="*80)
 print("2. OUTLIERS / TOP HOLDINGS EXTRACTION")
 print("="*80)
@@ -167,10 +167,10 @@ if outliers_list:
     df_outliers = pd.concat(outliers_list)
     outliers_path = PROC_DIR / "etf_outliers_jsons.csv"
     df_outliers.to_csv(outliers_path, index=False)
-    print(f"✅ Outliers table saved to: {outliers_path}")
+    print(f"[OK] Outliers table saved to: {outliers_path}")
 
 
-# ─── 3. WEIGHT DISTRIBUTION PLOT ──────────────────────────────────────────────
+# --- 3. WEIGHT DISTRIBUTION PLOT ----------------------------------------------
 print("\nGenerating 'Weight Distribution' plot...")
 df_weights = pd.concat(latest_holdings)
 
@@ -185,7 +185,7 @@ plt.savefig(FIG_DIR / "2_weight_distribution.png", dpi=300)
 plt.close()
 
 
-# ─── 4. RETURN DISTRIBUTION (SHOCK ILLUSTRATION) ──────────────────────────────
+# --- 4. RETURN DISTRIBUTION (SHOCK ILLUSTRATION) ------------------------------
 print("Generating 'Returns Distribution & Outliers' plot...")
 flat_returns = returns.values.flatten()
 flat_returns = flat_returns[~np.isnan(flat_returns)]
@@ -210,7 +210,7 @@ plt.savefig(FIG_DIR / "3_returns_distribution.png", dpi=300)
 plt.close()
 
 
-# ─── 5. LIQUIDITY CHANNEL (AMIHUD) ────────────────────────────────────────────
+# --- 5. LIQUIDITY CHANNEL (AMIHUD) --------------------------------------------
 print("Generating 'Market Illiquidity (Amihud)' plot...")
 amihud = pd.read_csv(PROC_DIR / "amihud.csv", index_col="date", parse_dates=True)
 market_illiquidity = amihud.mean(axis=1)
@@ -230,3 +230,4 @@ plt.savefig(FIG_DIR / "4_amihud_liquidity.png", dpi=300)
 plt.close()
 
 print("\nScript completed successfully!")
+

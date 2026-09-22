@@ -1,5 +1,5 @@
 """
-4_spillover_model.py
+20_estimate_baseline_model.py
 ====================
 Intra-ETF spillover model with endogenous shock definition.
 
@@ -16,8 +16,8 @@ operations instead of a per-date loop. This reduces runtime from hours to
 minutes for ETFs with ~30 constituents.
 
 Inputs:
-    processed/{etf}_holdings.csv   (from 1_load_holdings.py)
-    processed/returns_clean.csv    (from 3_compute_returns.py)
+    processed/{etf}_holdings.csv   (from 01_load_holdings.py)
+    processed/returns_clean.csv    (from 11_compute_returns.py)
 
 Outputs:
     results/panel_full.csv
@@ -36,9 +36,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # CONFIGURATION
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
@@ -84,9 +84,9 @@ SHOCK_THRESHOLD = 1.5
 ILLIQ_WINDOW      = 20
 MISPRICING_WINDOW = 5
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 0: LOAD DATA
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 print("\nLoading returns_clean.csv...")
 _peek      = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
@@ -96,7 +96,7 @@ returns    = pd.read_csv(PROC_DIR / "returns_clean.csv",
 returns.index = pd.to_datetime(returns.index)
 print(f"  Returns shape: {returns.shape}")
 
-# Load benchmark prices (from 2d_download_benchmarks.py)
+# Load benchmark prices (from 06_download_benchmarks.py)
 print("Loading benchmarks.csv...")
 _bpeak   = pd.read_csv(PROC_DIR / "benchmarks.csv", nrows=0)
 _bidx    = _bpeak.columns[0]
@@ -119,7 +119,7 @@ else:
     }
     print("  [WARN] benchmark_mapping.csv not found. Using hardcoded mapping.")
 
-# Load GICS sector/industry classifications (from 2e_download_gics.py)
+# Load GICS sector/industry classifications (from 08_download_gics.py)
 gics_path = PROC_DIR / "gics_data.csv"
 if gics_path.exists():
     gics_df = pd.read_csv(gics_path, index_col="ticker")
@@ -130,7 +130,7 @@ else:
     gics_df = pd.DataFrame(columns=["sector", "industry"])
     print("  [WARN] gics_data.csv not found. Similarity_ij will be binary (0/1).")
 
-# Load Amihud illiquidity (from 2f_download_volume.py)
+# Load Amihud illiquidity (from 10_download_volume.py)
 amihud_path = PROC_DIR / "amihud.csv"
 if amihud_path.exists():
     _apeak   = pd.read_csv(amihud_path, nrows=0)
@@ -172,9 +172,9 @@ def select_benchmark(etf: str) -> tuple:
 
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 1: VECTORIZED SHOCK IDENTIFICATION
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
                                 ret_bench:  pd.Series) -> pd.DataFrame:
@@ -319,9 +319,9 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
     return pd.DataFrame(records)
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 2: MECHANISM VARIABLE UTILITIES
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def illiquidity_proxy(ticker: str, t0: pd.Timestamp,
                        ret: pd.Series) -> float:
@@ -329,7 +329,7 @@ def illiquidity_proxy(ticker: str, t0: pd.Timestamp,
     Amihud (2002) illiquidity ratio, computed as the rolling mean of
     |R_t| / (Volume_t * Price_t) over the pre-event window.
 
-    If amihud_df is available (from 2f_download_volume.py), uses the
+    If amihud_df is available (from 10_download_volume.py), uses the
     pre-computed rolling Amihud ratio. Otherwise falls back to rolling
     return volatility as a proxy.
 
@@ -353,7 +353,7 @@ def similarity(ticker_i: str, ticker_j: str) -> float:
     GICS-based economic similarity between two stocks.
 
     Encoding:
-        1.00  same industry   (narrow — likely informational spillover)
+        1.00  same industry   (narrow - likely informational spillover)
         0.50  same sector, different industry
         0.00  different sector (co-membership only, no informational link)
 
@@ -367,7 +367,7 @@ def similarity(ticker_i: str, ticker_j: str) -> float:
     row_j = gics_df.loc[ticker_j] if ticker_j in gics_df.index else None
 
     if row_i is None or row_j is None:
-        return 0.5   # unknown — assign middle value
+        return 0.5   # unknown - assign middle value
 
     sector_i   = row_i.get("sector",   None)
     sector_j   = row_j.get("sector",   None)
@@ -375,7 +375,7 @@ def similarity(ticker_i: str, ticker_j: str) -> float:
     industry_j = row_j.get("industry", None)
 
     if pd.isna(sector_i) or pd.isna(sector_j):
-        return 0.5   # missing sector — assign middle value
+        return 0.5   # missing sector - assign middle value
 
     if sector_i != sector_j:
         return 0.0   # different sector
@@ -404,9 +404,9 @@ def mispricing_proxy(etf_ret: pd.Series,
     return float(etf_ret.reindex(w).sum() - bench_ret.reindex(w).sum())
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 3: BUILD OBSERVATION PANEL (j, e)
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def compute_car_single(ret_stock: pd.Series,
                         ret_bench: pd.Series,
@@ -531,9 +531,9 @@ def build_panel(shocks:      pd.DataFrame,
     return pd.DataFrame(rows)
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 4: SPILLOVER REGRESSION
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def run_regression(panel: pd.DataFrame) -> None:
     """
@@ -564,7 +564,7 @@ def run_regression(panel: pd.DataFrame) -> None:
     print("INTRA-ETF SPILLOVER REGRESSION RESULTS")
     print("=" * 70)
     tbl = result.summary2().tables[1]
-    # Column names vary by statsmodels version — print all available columns
+    # Column names vary by statsmodels version - print all available columns
     available_cols = [c for c in ["Coef.", "Std.Err.", "t", "P>|t|",
                                    "z", "P>|z|", "[0.025", "0.975]"]
                       if c in tbl.columns]
@@ -639,9 +639,9 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
                        available_cols])
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # MAIN
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 if __name__ == "__main__":
 
@@ -690,7 +690,7 @@ if __name__ == "__main__":
 
         # Identify shocks (vectorized)
         print(f"\n  Identifying shocks "
-              f"(threshold={SHOCK_THRESHOLD}σ, vectorized)...")
+              f"(threshold={SHOCK_THRESHOLD}sigma, vectorized)...")
         shocks = identify_shocks_vectorized(ret_stocks, ret_bench)
         print(f"  Shocks identified: {len(shocks):,}")
 
@@ -724,4 +724,6 @@ if __name__ == "__main__":
 
         run_regression(full_panel)
         asymmetry_analysis(full_panel)
+
+
 

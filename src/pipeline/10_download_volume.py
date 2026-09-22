@@ -1,5 +1,5 @@
 """
-2f_download_volume.py
+10_download_volume.py
 =====================
 Downloads daily trading volume for all constituent tickers and computes
 the Amihud (2002) illiquidity ratio.
@@ -28,7 +28,7 @@ import pandas as pd
 import yfinance as yf
 from pathlib import Path
 
-# ─── CONFIGURATION ────────────────────────────────────────────────────────────
+# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
 
@@ -40,7 +40,7 @@ BATCH_PAUSE = 2
 # Rolling window for Amihud calculation (trading days)
 AMIHUD_WINDOW = 20
 
-# ─── LOAD EXISTING DATA ───────────────────────────────────────────────────────
+# --- LOAD EXISTING DATA -------------------------------------------------------
 print("Loading ticker list...")
 _peek    = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
 _idx_col = _peek.columns[0]
@@ -62,7 +62,7 @@ returns = pd.read_csv(PROC_DIR / "returns_clean.csv",
 returns.index = pd.to_datetime(returns.index)
 print(f"  Returns shape: {returns.shape}")
 
-# ─── BATCH DOWNLOAD VOLUME ────────────────────────────────────────────────────
+# --- BATCH DOWNLOAD VOLUME ----------------------------------------------------
 print(f"\nDownloading volume in batches of {BATCH_SIZE}...")
 
 batches      = [tickers[i:i+BATCH_SIZE]
@@ -103,7 +103,7 @@ for idx, batch in enumerate(batches):
     if idx < len(batches) - 1:
         time.sleep(BATCH_PAUSE)
 
-# ─── COMBINE VOLUME ───────────────────────────────────────────────────────────
+# --- COMBINE VOLUME -----------------------------------------------------------
 print("\nCombining volume data...")
 volume = pd.concat(vol_frames, axis=1)
 volume = volume.loc[:, ~volume.columns.duplicated()]
@@ -122,7 +122,7 @@ vol_path = PROC_DIR / "volume_raw.csv"
 volume.to_csv(vol_path)
 print(f"Saved: {vol_path}")
 
-# ─── COMPUTE AMIHUD ILLIQUIDITY ───────────────────────────────────────────────
+# --- COMPUTE AMIHUD ILLIQUIDITY -----------------------------------------------
 print(f"\nComputing Amihud illiquidity (rolling {AMIHUD_WINDOW}-day window)...")
 
 # Only compute for tickers present in both returns and volume
@@ -166,6 +166,8 @@ amihud_path = PROC_DIR / "amihud.csv"
 rolling_amihud.to_csv(amihud_path)
 print(f"Saved: {amihud_path}")
 
-print(f"\nDone. Use amihud.csv in 4_spillover_model.py to replace the")
+print(f"\nDone. Use amihud.csv in 20_estimate_baseline_model.py to replace the")
 print(f"volatility-based illiquidity proxy with the true Amihud ratio.")
+
+
 

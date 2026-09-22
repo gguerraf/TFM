@@ -1,150 +1,129 @@
-# Project Roadmap, Progress Tracking & Changelog
+# Project Progress
 
-> **Master's Thesis:** *Structural Dynamics and Contagion Mechanisms of Intra-ETF Shock Transmission*  
-> **Repository:** [`.`](.)  
-> **Code Directory:** [`src`](./code)  
-> **Last Updated:** February 2026
+Last updated: 2026-09-22
 
----
+## Current Status
 
-## 1. Overall Project Status Summary
+The project has moved from a preliminary spillover prototype to a validated econometric and machine-learning pipeline for intra-ETF shock transmission. The repository has also been reorganized into a clearer GitHub-style structure with `src/pipeline`, `src/models`, `src/analysis`, `src/utils`, and `docs/project_context`.
 
-| Phase | Milestone / Objective | Status | Target Completion | Key Deliverables |
-| :---: | :--- | :---: | :---: | :--- |
-| **Phase 0** | Data Pipeline Ingestion, Cleaning & Validation | **COMPLETED** | Jan 2026 | Ingested 5 ETFs, cleaned prices/returns, Amihud, GICS, validation run ($N=285,752$) |
-| **Phase 1** | Econometric Model Refinements & Panel Re-estimation | **IN PROGRESS** | Feb 2026 | Dynamic shock thresholds, IXC benchmark, two-way clustering, main effects, time FE |
-| **Phase 2** | Robustness Check Suite (12 Specifications) | **PENDING** | Mar 2026 | Parameter sensitivity, multi-factor models, sub-period tests, placebo checks |
-| **Phase 3** | Machine Learning Baseline (LightGBM + SHAP) | **PENDING** | Mar 2026 | Non-linear feature importance, partial dependence, purged temporal CV |
-| **Phase 4** | Deep Neural Network Baseline | **PENDING** | Apr 2026 | Multi-layer perceptron with entity embeddings (conditional on ML gain) |
-| **Phase 5** | Graph Neural Network (GNN) Formulation | **PENDING** | Apr 2026 | Dynamic constituent bipartite graph (conditional on non-linear value) |
-| **Phase 6** | Creation/Redemption ETF Flow Channel ($\beta_3$) | **PENDING** | May 2026 | Daily shares outstanding changes, flow-induced price pressure estimation |
+The current empirical universe excludes `SPY` from the main model because it is a broad market ETF and creates a self-benchmarking problem. The main analysis uses `XME`, `XLE`, `IHE`, and `XLV`. `XLE` now uses `IXC` as its benchmark instead of the broad market index.
 
----
+## Completed Work
 
-## 2. Phase 0: Data Pipeline & Validation Run (COMPLETED)
+### Data Pipeline
 
-### Key Achievements (Completed January 2026)
-1. **Raw Holdings Ingestion:**
-   - Ingested daily JSON holdings files for all 5 target ETFs (`SPY`, `XME`, `XLE`, `IHE`, `XLV`) spanning 2015-01-01 to 2026-02-12.
-   - Total parsed holdings rows across ETFs:
-     - `SPY`: 1,388,616 records
-     - `XLV`: 170,818 records
-     - `IHE`: 116,218 records
-     - `XME`: 82,555 records
-     - `XLE`: 78,911 records
-   - Filtered out cash equivalents, bond positions, and third-party fund placeholders while strictly preserving reported equity portfolio weights without artificial renormalisation.
-   - Handled intra-day corporate actions and M&A ticker collisions by keeping the highest-weight active constituent row.
-2. **Constituent Price & Return Matrix Construction:**
-   - Identified 1,752 raw constituent tickers, deduplicated to 1,120 unique corporate entities via ISIN mapping and legal name clustering.
-   - Successfully downloaded daily historical prices for 864 tickers via `yfinance` in batches of 100.
-   - Executed ticker format cleaning (`2b_retry_failed_tickers.py`) and historical ticker renaming stitches (`2c_rename_tickers.py`, e.g., ANTM $\rightarrow$ ELV).
-   - Filtered out ill-covered tickers ($<30\%$ history), producing a clean log-return matrix of **802 constituent stocks across 3,155 trading days** (`returns_clean.csv`) aligned to the US trading calendar anchored on SPY.
-3. **Sector Benchmark Integration:**
-   - Downloaded daily historical benchmarks (`benchmarks.csv`) covering 2014-01-02 to 2026-02-11 (3,046 trading days) for `^GSPC`, `XLB`, `IXC`, `XLV`, and `^SP500-35`.
-4. **Mechanism Variable Extraction:**
-   - Extracted GICS Sector and Industry classifications for 802 tickers (`gics_data.csv`), enabling the continuous informational similarity variable:
-     $$Similarity_{ij} \in \{0.0, 0.5, 1.0\}$$
-   - Downloaded daily share trading volume (`volume_raw.csv`) and computed rolling 20-day Amihud (2002) illiquidity ratios (`amihud.csv`), replacing primitive return volatility proxies.
+- Parsed raw ETF holdings JSON files into cleaned holdings CSVs.
+- Filtered non-equity holdings and handled duplicate ticker records.
+- Built a deduplicated company universe.
+- Downloaded and repaired constituent price histories.
+- Added ticker mapping logic for renamed or acquired companies.
+- Downloaded benchmarks, including `IXC` for `XLE`.
+- Downloaded GICS sector and industry metadata.
+- Downloaded daily volume and computed Amihud illiquidity.
+- Computed cleaned daily log returns.
 
-### Preliminary Results: Validation Run (XME + XLE)
-- **Sample:** Validation run restricted to `XME` (Metals & Mining, ~30 stocks) and `XLE` (Energy, ~30 stocks) to verify pipeline integrity prior to scaling.
-- **Panel Dimensions:** 285,752 observation rows across 27,948 identified shock events.
-- **Model Comparison (Initial Proxy vs. Enhanced Specification):**
+### Econometric Model
 
-| Regression Coefficient | Economic Hypothesis | Version 1 (Vol & Binary Sim) | Version 2 (Amihud & GICS) | Statistical Significance |
-| :--- | :--- | :--- | :--- | :--- |
-| **$\beta_1$ (Baseline Propagation)** | H1: Basket Comovement | $+0.023$ ($p = 0.928$) | **$+2.043$** ($p < 0.001$) | Highly Significant (***) |
-| **$\beta_2$ (Liquidity Channel)** | H2: Price Pressure / Friction | $+33.41$ ($p < 0.001$) | **$-10.647$** ($p = 0.004$) | Highly Significant (***) |
-| **$\beta_4$ (Arbitrage Channel)** | H4: ETF Premium/Discount | $+0.847$ ($p = 0.714$) | **$-4.423$** ($p = 0.068$) | Marginally Significant (*) |
-| **$\beta_5$ (Informational)** | H1 (Info): GICS Relatedness | $+0.235$ ($p < 0.001$) | **$+0.403$** ($p < 0.001$) | Highly Significant (***) |
-| **$\delta$ (Negative Asymmetry)** | H5: Downside Contagion | — | $+0.433$ ($p = 0.104$) | Subsample Significant |
+The improved model is implemented in `src/models/21_estimate_improved_model.py`.
 
-#### Key Insights from Validation Run
-- **Sign Reversal of $\beta_2$:** Under rolling return volatility, $\beta_2$ was positive, but substituting true Amihud price impact caused a sign reversal to $-10.65$ ($p=0.004$). This reveals that return volatility was capturing noise, whereas genuine illiquidity acts as an execution friction dampening immediate mechanical basket transmission over 3 days.
-- **Asymmetry Subsample Finding:** While $\delta$ was marginally insignificant in the pooled panel, subsample regressions revealed strong structural asymmetry:
-  - Negative shocks activated both the liquidity channel ($\beta_2 = -22.83, p < 0.001$) and arbitrage channel ($\beta_4 = -7.50, p = 0.027$).
-  - Positive shocks showed no statistically significant activation of these friction channels.
+Main corrections now implemented:
 
----
+1. Event-specific shock thresholds based only on the pre-event estimation window residual variance.
+2. `SPY` excluded from the main analysis.
+3. `XLE` benchmark changed to `IXC`.
+4. Receiver-stock and year-quarter fixed effects included.
+5. Main effects added for liquidity, mispricing, similarity and negative-shock status.
+6. Receiver contamination filter added for overlapping events.
+7. Amihud illiquidity log-transformed.
+8. Two-way clustered standard errors fixed using `AbsorbingLS`, clustered by `event_id` and `stock_j`.
 
-## 3. Phase 1: Econometric Model Improvements (IN PROGRESS)
+The move to `AbsorbingLS` was necessary because explicit dummy-variable OLS with more than 744,000 observations and many fixed effects caused numerical and memory failures in `statsmodels` (`init_gesdd`, QR and SVD failures). Absorbing the fixed effects avoids materializing the dummy matrix and produces stable one-way and two-way clustered inference.
 
-Based on diagnostic evaluations of [`4_spillover_model.py`](src/4_spillover_model.py), Phase 1 implements 8 vital econometric corrections in [`4a_improved_model.py`](src/4a_improved_model.py):
+### Robustness Checks
 
-- [ ] **1. Eliminate Lookahead Bias in Shock Identification:**
-  - *Current issue:* `4_spillover_model.py` flags shocks using the stock's full-sample standard deviation of CARs ($\text{std}(CAR_i)$ over 2015–2026).
-  - *Fix:* Compute dynamic shock threshold strictly using the estimation window residual variance:
-    $$|CAR_i(t_0)| > 1.5 \times \sqrt{H + 1} \times \hat{\sigma}_{\epsilon, i}(t_0), \quad \hat{\sigma}_{\epsilon, i}(t_0) = \sqrt{\frac{1}{118}\sum_{t=t_0-125}^{t_0-6} \hat{\epsilon}_{i,t}^2}$$
-- [ ] **2. Correct XLE Energy Benchmark Assignment:**
-  - *Current issue:* `XLE` defaulted to `^GSPC` (S&P 500), which conflated market-wide movements with energy sector shocks.
-  - *Fix:* Map `XLE` to [`IXC`](holdings/processed/benchmarks.csv) (iShares Global Energy ETF), which has complete daily coverage since 2014.
-- [ ] **3. Formally Exclude SPY from Main Regression Analysis:**
-  - *Current issue:* Including `SPY` causes severe self-benchmarking endogeneity against `^GSPC`.
-  - *Fix:* Exclude `SPY` from primary spillover estimations; retain `XME`, `XLE`, `IHE`, and `XLV` as the main analytical universe.
-- [ ] **4. Add Main Effects to Regression Specification:**
-  - *Current issue:* Interacting terms ($Shock \times w_i \times Illiq$) without individual main effects violates the hierarchy principle of regression analysis, risking omitted variable bias.
-  - *Fix:* Add level terms $\gamma_1 Illiq_j + \gamma_2 Mispricing_k + \gamma_3 Similarity_{ij} + \gamma_4 Neg_e$.
-- [ ] **5. Implement Two-Way Clustered Standard Errors:**
-  - *Current issue:* One-way clustering on `event_id` only accounts for cross-sectional peer correlations on date $t_0$, ignoring serial correlation in repeated observations of receiver stock $j$.
-  - *Fix:* Estimate standard errors clustered simultaneously by `event_id` and `stock_j` via `linearmodels.panel.PanelOLS`.
-- [ ] **6. Add Year-Quarter Time Fixed Effects ($FE_{yq}$):**
-  - *Current issue:* Stock fixed effects control for cross-sectional heterogeneity, but macroeconomic cycles (e.g., COVID market panic, interest rate tightening) remain uncontrolled.
-  - *Fix:* Include categorical time dummies for each calendar year-quarter.
-- [ ] **7. Overlapping Event Decontamination Filter:**
-  - *Current issue:* If receiver stock $j$ announces its own major news concurrently, $AR_j$ is contaminated.
-  - *Fix:* Discard peer observation $(e, j)$ if stock $j$ experienced a firm-specific shock within $[t_0 - 3, t_0 + 3]$.
-- [ ] **8. Log-Transform and Sector-Median Imputation for Illiquidity:**
-  - *Current issue:* Raw Amihud values contain extreme positive outliers, and missing days fell back to unscaled volatility.
-  - *Fix:* Apply $Illiq_j = \ln(1 + 10^{10} \times ILLIQ)$ and impute missing values using the date-specific sector median.
+Robustness checks are implemented in `src/models/22_run_robustness_checks.py` and now also use absorbed fixed effects.
 
----
+Current checks include:
 
-## 4. Phase 2: Comprehensive Robustness Suite (PENDING)
+- Baseline specification.
+- Positive-shock and negative-shock subsamples.
+- Pre-COVID and post-COVID subsamples.
+- Per-ETF regressions.
+- Excluding top-weight observations.
+- Trimming `AR_j` and `Shock_i` at the 1st and 99th percentiles.
+- Placebo event assignment within ETF.
+- Randomized receiver membership.
+- Shuffled receiver abnormal returns.
+- No year-quarter fixed effects.
 
-Once the baseline model in Phase 1 is estimated across all four ETFs (`XME`, `XLE`, `IHE`, `XLV`), Phase 2 will execute 12 systematic robustness checks:
+Important correction: the previous `R16_Placebo_dates` check changed dates but did not recompute outcomes or regressors, so it produced results identical to the baseline. It has been replaced by `R16_Placebo_event_assignment`, which randomly reassigns shock variables within each ETF and recomputes the interaction terms. This breaks the event-outcome link while preserving ETF-level structure.
 
-1. **Threshold Multiplier Sensitivity:** Re-estimate with $\theta \in \{1.0\sigma, 2.0\sigma, 2.5\sigma\}$.
-2. **Event Horizon Length:** Test transmission horizon $H \in \{1, 2, 5\}$ trading days.
-3. **Estimation Window Length:** Vary estimation window $W \in \{60, 90, 180, 252\}$ trading days.
-4. **Estimation Gap Sensitivity:** Test pre-event gaps of $GAP \in \{2, 10\}$ trading days.
-5. **Multi-Factor Risk Model:** Estimate abnormal returns using the Fama-French 3-factor model (Market, SMB, HML) instead of the single sector index.
-6. **Sub-Period Analysis:** Split into Pre-COVID (2015–2019), COVID Crisis (2020–2021), and Rate-Hike Era (2022–2026).
-7. **Cross-Sector Sub-Sample Regressions:** Individual regressions for `XME`, `XLE`, `IHE`, and `XLV`.
-8. **Heavyweight Constituent Sample:** Restrict shocks to constituents with weight $w_i > 2\%$ and $w_i > 5\%$.
-9. **Placebo Pseudo-Event Shuffling:** Permute event dates randomly across time to generate empirical $t$-statistic distributions under the sharp null hypothesis.
-10. **Alternative Liquidity Metrics:** Re-estimate using share turnover and Roll (1984) effective bid-ask spread proxies.
-11. **Contamination Filter Sensitivity:** Narrow and widen the overlapping shock purge window ($[t_0 - 1, t_0 + 1]$ vs $[t_0 - 5, t_0 + 5]$).
-12. **Leave-One-Out Basket Residualization:** Compare sector benchmark abnormal returns against synthetic leave-one-out basket returns $AR^{(-i)}$.
+### Machine Learning and Neural Network
 
----
+The ML benchmark is implemented in `src/models/23_run_ml_baselines.py`.
 
-## 5. Phase 3: Machine Learning Benchmark (PENDING)
+The script compares:
 
-### Objectives
-- Benchmark linear econometric findings against non-linear, non-parametric tree models.
-- Determine whether complex feature interactions (e.g., non-linear interactions between illiquidity, portfolio weight, and sector similarity) improve out-of-sample predictability of $AR_j$.
+- Simple OLS without fixed effects.
+- LightGBM.
+- Feed-forward neural network with fixed `tanh` activation.
 
-### Methodological Framework
-1. **Model:** LightGBM Regressor (`lightgbm`).
-2. **Cross-Validation Scheme:** Purged Group Time-Series Split (Walk-forward chronological validation, embargoing 5 days around event boundaries to avoid leakage).
-3. **Feature Space:**
-   - Shocks: $Shock_i$, $|Shock_i|$, $Neg_e$.
-   - Holdings: $w_i$, $w_j$, $w_i / w_j$, constituent rank.
-   - Market Microstructure: $Illiq_j$, $\Delta Illiq_j$, volume percentile, market cap proxy.
-   - ETF Level: $Mispricing_k$, ETF return volatility.
-   - Economic Linkages: $Similarity_{ij}$ (GICS match degree).
-4. **Interpretability:**
-   - TreeSHAP (`shap.TreeExplainer`) to compute global feature importance and feature interaction plots.
-   - Partial Dependence Plots (PDP) to visualize non-linearities in the liquidity and weight transmission channels.
+The neural network now follows the supervisor's suggestion more closely: the activation function is fixed to `tanh`, and the modest grid varies mainly the number of hidden layers and the number of nodes per layer. Learning rate, dropout and batch size are fixed to keep the grid small and interpretable.
 
----
+Current best neural network configuration:
 
-## 6. Phases 4–6: Advanced Extensions (PENDING)
+- Hidden layers: 3
+- Nodes per layer: 16
+- Activation: `tanh`
+- Learning rate: 0.01
+- Dropout: 0.0
+- Batch size: 2048
 
-- **Phase 4: Neural Network Benchmark (Conditional):** If LightGBM demonstrates significant non-linear predictive lift over OLS ($R^2$ gain $> 5\%$), deploy a Multi-Layer Perceptron (MLP) with entity embeddings for constituent stocks and industry sectors.
-- **Phase 5: Graph Neural Network (GNN) Spillover Modeling (Conditional):** Model the ETF constituent universe as a time-varying dynamic graph where nodes represent individual stocks (attributed with returns and liquidity) and edges represent ETF co-holdings and GICS relatedness. Use Graph Convolutional Networks (GCN) or Graph Attention Networks (GAT) to model multi-hop shock contagion.
-- **Phase 6: Ingestion of ETF Creation/Redemption Flow Data:** Ingest daily shares outstanding for the ETFs to construct true dollar flow variables:
-  $$Flow_{k,t} = (Shares_{k,t} - Shares_{k,t-1}) \times P_{k,t}$$
-  allowing direct empirical testing of Hypothesis **H4** ($\beta_3$ flow channel).
+Compared with the earlier neural network run, the adjusted grid improved the neural network:
 
+| Neural network version | Test R2 | Test MAE | Directional accuracy |
+| --- | ---: | ---: | ---: |
+| Previous NN grid | 0.0121 | 0.0220 | 0.5311 |
+| Current supervisor-aligned NN grid | 0.0146 | 0.0220 | 0.5377 |
 
+LightGBM remains slightly better than the neural network:
+
+| Model | Test R2 | Test MAE | Directional accuracy |
+| --- | ---: | ---: | ---: |
+| OLS baseline | 0.0002 | 0.0221 | 0.5230 |
+| LightGBM | 0.0163 | 0.0220 | 0.5407 |
+| Tanh neural network | 0.0146 | 0.0220 | 0.5377 |
+
+## Current Main Results
+
+The final improved panel contains 758,013 observations. The main regression uses 744,666 observations after dropping missing model variables.
+
+One-way clustered results are similar to the previous OLS results, but the final interpretation should prioritize two-way clustered standard errors.
+
+Two-way clustered results:
+
+| Term | Coef. | SE | p-value | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| `b1_term` | -0.4638 | 0.1454 | 0.0014 | Direct weighted shock propagation is negative and significant. |
+| `b2_term` | 0.3326 | 0.0540 | <0.001 | Liquidity channel is positive and significant. |
+| `b4_term` | -2.7383 | 2.1661 | 0.2062 | Mispricing/arbitrage channel is not robustly significant. |
+| `b5_term` | 0.0187 | 0.0029 | <0.001 | Informational spillover channel is positive and significant. |
+| `asym_term` | -0.1410 | 0.1001 | 0.1588 | Negative-shock asymmetry is not robustly significant. |
+
+Main conclusion: the strongest robust channels are the liquidity channel and the informational similarity channel. The direct weighted shock term is negative and significant, which suggests the average pooled response is not a simple same-direction contagion effect. Arbitrage/mispricing and negative-shock asymmetry are weaker under two-way clustered inference.
+
+## Remaining Work
+
+Short-term priorities:
+
+1. Decide whether to commit and push the current local changes.
+2. Use the updated `results_interpretation.md` as the basis for the thesis results section.
+3. Decide whether to add one additional econometric variable, but only after discussing whether the new variable has strong academic value and available data.
+4. Keep `holdings/`, generated results and local machine-specific files out of GitHub.
+
+Potential future extensions:
+
+- Add ETF flow or creation/redemption proxy if shares outstanding data can be obtained reliably.
+- Add receiver stock portfolio weight `w_j` or weight-rank variables.
+- Add a market-state or volatility-regime interaction.
+- Consider a GNN only as a future extension, not as a core model, because LightGBM and the MLP only show limited predictive gains over OLS.

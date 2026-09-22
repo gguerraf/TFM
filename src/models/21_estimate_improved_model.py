@@ -1,25 +1,25 @@
 """
-4a_improved_model.py
+21_estimate_improved_model.py
 ====================
 Improved Intra-ETF spillover model.
 
-Improvements over 4_spillover_model.py (the baseline):
-  C1 — Fixed lookahead bias: shock threshold is now event-specific,
+Improvements over 20_estimate_baseline_model.py (the baseline):
+  C1 - Fixed lookahead bias: shock threshold is now event-specific,
        using only the estimation-window residual std (Patell 1976).
-  C2 — XLE benchmark changed from ^GSPC to IXC (iShares Global Energy).
-  C3 — SPY excluded from the main analysis (self-benchmarking problem).
-  C4 — Lower-order main effects added (Illiq_j, Mispricing_k, etc.).
-  C5 — Two-way clustered SEs (event_id × stock_j).
-  C6 — Overlapping/contaminated events filtered.
-  C7 — Illiquidity: log-transformed, NaN-preserving (no 0.0 imputation).
-  D2 — Year-quarter time fixed effects added.
+  C2 - XLE benchmark changed from ^GSPC to IXC (iShares Global Energy).
+  C3 - SPY excluded from the main analysis (self-benchmarking problem).
+  C4 - Lower-order main effects added (Illiq_j, Mispricing_k, etc.).
+  C5 - Two-way clustered SEs (event_id x stock_j).
+  C6 - Overlapping/contaminated events filtered.
+  C7 - Illiquidity: log-transformed, NaN-preserving (no 0.0 imputation).
+  D2 - Year-quarter time fixed effects added.
 
 Inputs:
-    processed/{etf}_holdings.csv   (from 1_load_holdings.py)
-    processed/returns_clean.csv    (from 3_compute_returns.py)
-    processed/benchmarks.csv       (from 2d_download_benchmarks.py)
-    processed/gics_data.csv        (from 2e_download_gics.py)
-    processed/amihud.csv           (from 2f_download_volume.py)
+    processed/{etf}_holdings.csv   (from 01_load_holdings.py)
+    processed/returns_clean.csv    (from 11_compute_returns.py)
+    processed/benchmarks.csv       (from 06_download_benchmarks.py)
+    processed/gics_data.csv        (from 08_download_gics.py)
+    processed/amihud.csv           (from 10_download_volume.py)
 
 Outputs:
     results/panel_improved.csv
@@ -34,6 +34,7 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
+from linearmodels.iv.absorbing import AbsorbingLS
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -41,9 +42,9 @@ from pathlib import Path
 from itertools import product
 from bisect import bisect_left, bisect_right
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # CONFIGURATION
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
@@ -52,13 +53,13 @@ FIG_DIR    = BASE_DIR / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True)
 FIG_DIR.mkdir(exist_ok=True)
 
-# ── Key change C3: SPY excluded from main analysis ──
+# -- Key change C3: SPY excluded from main analysis --
 ETF_LIST = ["XME", "XLE", "IHE", "XLV"]
 
-# ── Key change C2: XLE now uses IXC instead of ^GSPC ──
+# -- Key change C2: XLE now uses IXC instead of ^GSPC --
 ETF_BENCHMARK = {
     "XME": "XLB",
-    "XLE": "IXC",         # Was ^GSPC — now iShares Global Energy ETF
+    "XLE": "IXC",         # Was ^GSPC - now iShares Global Energy ETF
     "IHE": "XLV",
     "XLV": "^SP500-35",
 }
@@ -75,7 +76,7 @@ ESTIMATION_WINDOW = 120   # trading days for OLS estimation
 GAP               = 5     # days between estimation window end and event date
 EVENT_H           = 3     # CAR window: [t0, t0 + EVENT_H]
 
-# ── Key change C1: event-specific threshold ──
+# -- Key change C1: event-specific threshold --
 # Shock flagged when |CAR| > SHOCK_THRESHOLD * sqrt(H+1) * sigma_epsilon
 # where sigma_epsilon is from the estimation window residuals.
 SHOCK_THRESHOLD = 1.5
@@ -84,9 +85,9 @@ SHOCK_THRESHOLD = 1.5
 ILLIQ_WINDOW      = 20
 MISPRICING_WINDOW = 5
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 0: LOAD DATA
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 print("\nLoading returns_clean.csv...")
 _peek      = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
@@ -122,7 +123,7 @@ if amihud_path.exists():
     _aidx    = _apeak.columns[0]
     amihud_df = pd.read_csv(amihud_path, index_col=_aidx, parse_dates=True)
     amihud_df.index = pd.to_datetime(amihud_df.index)
-    # ── Key change C7/D6: log-transform Amihud ──
+    # -- Key change C7/D6: log-transform Amihud --
     # Scale factor 1e10 brings values into a reasonable range before log
     amihud_log = np.log1p(amihud_df * 1e10)
     print(f"  Amihud data loaded and log-transformed: {amihud_df.shape}")
@@ -141,7 +142,7 @@ def load_holdings(etf: str) -> pd.DataFrame:
 def select_benchmark(etf: str) -> tuple:
     """
     Selects the benchmark for a given ETF.
-    Priority: ETF_BENCHMARK mapping → bench_returns → returns_clean fallback.
+    Priority: ETF_BENCHMARK mapping -> bench_returns -> returns_clean fallback.
     """
     ticker = ETF_BENCHMARK.get(etf)
     if ticker and ticker in bench_returns.columns:
@@ -162,9 +163,9 @@ def select_benchmark(etf: str) -> tuple:
     raise ValueError(f"No benchmark found for {etf}")
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 1: SHOCK IDENTIFICATION (event-specific threshold, no lookahead)
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
                                 ret_bench:  pd.Series) -> pd.DataFrame:
@@ -232,7 +233,7 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
         betas[safe]  = (XtX[safe, 0, 0] * Xty[safe, 1]
                         - XtX[safe, 1, 0] * Xty[safe, 0]) / det[safe]
 
-        # ── Key change C1: compute residual std per estimation window ──
+        # -- Key change C1: compute residual std per estimation window --
         # Predicted Y in estimation window
         Y_pred = alphas[:, None] + betas[:, None] * X_batch[:, :, 1]
         residuals = Y_batch - Y_pred                        # (n_valid, W)
@@ -275,9 +276,9 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
     return pd.DataFrame(records)
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 2: MECHANISM VARIABLE UTILITIES
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def illiquidity_proxy(ticker: str, t0: pd.Timestamp) -> float:
     """
@@ -340,9 +341,9 @@ def mispricing_proxy(etf_ret: pd.Series,
     return float(etf_ret.reindex(w).sum() - bench_ret.reindex(w).sum())
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 3: BUILD OBSERVATION PANEL
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def compute_car_single(ret_stock: pd.Series,
                         ret_bench: pd.Series,
@@ -441,7 +442,7 @@ def build_panel(shocks:      pd.DataFrame,
         # Mechanism variables at t0
         mispricing = mispricing_proxy(etf_ret, ret_bench, t0)
 
-        # ── D2: Year-quarter for time fixed effects ──
+        # -- D2: Year-quarter for time fixed effects --
         year_quarter = f"{t0.year}Q{(t0.month - 1) // 3 + 1}"
 
         # Co-constituents j != i
@@ -451,7 +452,7 @@ def build_panel(shocks:      pd.DataFrame,
             if stock_j not in ret_stocks.columns:
                 continue
 
-            # ── C6: skip if receiver j has its own shock near t0 ──
+            # -- C6: skip if receiver j has its own shock near t0 --
             if stock_j in shock_lookup:
                 j_shock_dates = shock_lookup[stock_j]
                 lo = t0 - pd.Timedelta(days=EVENT_H * 2)
@@ -508,22 +509,21 @@ def build_panel(shocks:      pd.DataFrame,
     return pd.DataFrame(rows)
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # STEP 4: SPILLOVER REGRESSION
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 def run_regression(panel: pd.DataFrame) -> None:
     """
     Estimates the improved intra-ETF spillover regression.
 
-    Changes from baseline:
-      C4 — Includes lower-order main effects (Illiq_j, Mispricing_k, etc.)
-      C5 — Two-way clustered SEs (event_id × stock_j) using manual V_twoway
-      D2 — Year-quarter fixed effects via C(year_quarter)
+    The model absorbs receiver-stock and year-quarter fixed effects instead of
+    materializing them as dummy variables. This is more stable for the large
+    panel and allows one-way and two-way clustered standard errors.
     """
-    required = ["AR_j", "b1_term", "b2_term", "b4_term", "b5_term",
-                "asym_term", "Illiq_j", "Mispricing_k", "Similarity_ij",
-                "Neg_e"]
+    main_terms = ["b1_term", "b2_term", "b4_term", "b5_term", "asym_term",
+                  "Illiq_j", "Mispricing_k", "Similarity_ij", "Neg_e"]
+    required = ["AR_j", *main_terms, "stock_j", "year_quarter", "event_id"]
     df = panel.dropna(subset=required).copy()
 
     if len(df) < 100:
@@ -533,125 +533,93 @@ def run_regression(panel: pd.DataFrame) -> None:
 
     n_unique_events = df["event_id"].nunique()
     n_unique_stocks = df["stock_j"].nunique()
-    n_unique_yq     = df["year_quarter"].nunique()
+    n_unique_yq = df["year_quarter"].nunique()
 
     print(f"\n  Panel size : {len(df):,} observations")
     print(f"  Events     : {n_unique_events:,}")
     print(f"  Receivers  : {n_unique_stocks:,}")
     print(f"  Year-qtrs  : {n_unique_yq:,}")
 
-    # ── C4: Formula with main effects + D2: year-quarter FE ──
-    formula = ("AR_j ~ b1_term + b2_term + b4_term + b5_term + asym_term"
-               " + Illiq_j + Mispricing_k + Similarity_ij + Neg_e"
-               " + C(stock_j) + C(year_quarter)")
-
-    print(f"\nEstimating OLS with stock FE + year-quarter FE...")
-    result_ols = smf.ols(formula, data=df).fit(
-        cov_type="cluster",
-        cov_kwds={"groups": df["event_id"]}
-    )
-
-    main_terms = ["b1_term", "b2_term", "b4_term", "b5_term", "asym_term",
-                  "Illiq_j", "Mispricing_k", "Similarity_ij", "Neg_e"]
+    print("\nEstimating absorbed fixed-effects model...")
+    result_oneway = _estimate_absorbed(
+        df, main_terms, ["event_id"], "One-way clustered by event_id")
 
     print("\n" + "=" * 70)
     print("IMPROVED INTRA-ETF SPILLOVER REGRESSION RESULTS")
     print("(One-way clustered by event_id)")
     print("=" * 70)
-    _print_results(result_ols, main_terms)
+    _print_results(result_oneway, main_terms)
 
-    # ── C5: Two-way clustering (event_id × stock_j) ──
-    # Manual two-way clustering: V_twoway = V_event + V_stock - V_event∩stock
     print("\nEstimating two-way clustered standard errors...")
     try:
-        result_twoway = _estimate_twoway(formula, df)
+        result_twoway = _estimate_absorbed(
+            df, main_terms, ["event_id", "stock_j"],
+            "Two-way clustered by event_id and stock_j")
         print("\n" + "=" * 70)
-        print("TWO-WAY CLUSTERED STANDARD ERRORS (event_id × stock_j)")
+        print("TWO-WAY CLUSTERED STANDARD ERRORS (event_id x stock_j)")
         print("=" * 70)
         _print_results_twoway(result_twoway, main_terms)
     except Exception as e:
         print(f"  [WARN] Two-way clustering failed: {e}")
         print("  Falling back to one-way (event_id) clustering.")
-        result_twoway = result_ols
+        result_twoway = result_oneway
 
-    # Save results
     txt_path = OUTPUT_DIR / "regression_improved.txt"
     with open(txt_path, "w") as f:
         f.write("=" * 70 + "\n")
-        f.write("IMPROVED MODEL — One-way clustered by event_id\n")
+        f.write("IMPROVED MODEL - One-way clustered by event_id\n")
         f.write("=" * 70 + "\n")
-        f.write(result_ols.summary().as_text())
-        if result_twoway is not result_ols:
+        f.write(_absorbed_summary_text(result_oneway, main_terms))
+        if result_twoway is not result_oneway:
             f.write("\n\n" + "=" * 70 + "\n")
-            f.write("TWO-WAY CLUSTERED SE (event_id × stock_j)\n")
+            f.write("TWO-WAY CLUSTERED SE (event_id x stock_j)\n")
             f.write("=" * 70 + "\n")
             f.write(_twoway_summary_text(result_twoway, main_terms))
     print(f"\nFull summary saved: {txt_path}")
 
-    _plot_coefs(result_ols, main_terms[:5])
-
-    # ── Asymmetry subsample analysis ──
+    _plot_coefs(result_oneway, main_terms[:5])
     asymmetry_analysis(df)
 
+def _estimate_absorbed(df: pd.DataFrame, terms: list,
+                       cluster_cols: list, cov_label: str) -> dict:
+    """Fits the model with absorbed stock and year-quarter fixed effects."""
+    y = df["AR_j"]
+    x = df[terms]
+    absorb = df[["stock_j", "year_quarter"]].astype("category")
+    clusters = df[cluster_cols].copy()
+    for col in cluster_cols:
+        clusters[col] = pd.Categorical(clusters[col]).codes
 
-def _estimate_twoway(formula: str, df: pd.DataFrame) -> dict:
-    """
-    Manually computes two-way clustered standard errors.
-    V_twoway = V_cluster1 + V_cluster2 - V_intersection
-    Following Cameron, Gelbach, Miller (2011).
-    """
-    # Fit base OLS (no clustering)
-    base = smf.ols(formula, data=df).fit()
-
-    # One-way by event_id
-    res_event = smf.ols(formula, data=df).fit(
-        cov_type="cluster", cov_kwds={"groups": df["event_id"]})
-
-    # One-way by stock_j
-    res_stock = smf.ols(formula, data=df).fit(
-        cov_type="cluster", cov_kwds={"groups": df["stock_j"]})
-
-    # One-way by intersection (event_id × stock_j — effectively HC0)
-    df_temp = df.copy()
-    df_temp["_intersection"] = df["event_id"] + "||" + df["stock_j"]
-    res_inter = smf.ols(formula, data=df_temp).fit(
-        cov_type="cluster", cov_kwds={"groups": df_temp["_intersection"]})
-
-    # Two-way variance: V_event + V_stock - V_intersection
-    V_twoway = (res_event.cov_params()
-                + res_stock.cov_params()
-                - res_inter.cov_params())
-
-    # Compute SEs, t-stats, p-values from V_twoway
-    se_twoway = np.sqrt(np.diag(V_twoway))
-    params = base.params
-    t_stats = params / se_twoway
-    from scipy.stats import t as t_dist
-    dof = base.df_resid
-    p_values = 2 * t_dist.sf(np.abs(t_stats), dof)
+    result = AbsorbingLS(y, x, absorb=absorb).fit(
+        cov_type="clustered",
+        clusters=clusters,
+    )
 
     return {
-        "params": params,
-        "se": pd.Series(se_twoway, index=params.index),
-        "t": pd.Series(t_stats, index=params.index),
-        "p": pd.Series(p_values, index=params.index),
-        "nobs": base.nobs,
-        "rsquared_adj": base.rsquared_adj,
+        "params": result.params,
+        "se": result.std_errors,
+        "t": result.tstats,
+        "p": result.pvalues,
+        "nobs": result.nobs,
+        "rsquared_adj": result.rsquared_adj,
+        "cov_label": cov_label,
     }
 
 
 def _print_results(result, terms):
     """Prints regression results for the main terms."""
-    tbl = result.summary2().tables[1]
-    available_cols = [c for c in ["Coef.", "Std.Err.", "t", "P>|t|",
-                                   "z", "P>|z|", "[0.025", "0.975]"]
-                      if c in tbl.columns]
-    valid_terms = [t for t in terms if t in tbl.index]
-    print(tbl.loc[valid_terms, available_cols])
-    print(f"\nN observations : {result.nobs:.0f}")
-    print(f"Adjusted R-sq  : {result.rsquared_adj:.4f}")
+    valid_terms = [t for t in terms if t in result["params"].index]
+    tbl = pd.DataFrame({
+        "Coef.": result["params"].loc[valid_terms],
+        "Std.Err.": result["se"].loc[valid_terms],
+        "t": result["t"].loc[valid_terms],
+        "P>|t|": result["p"].loc[valid_terms],
+    })
+    print(tbl)
+    print(f"\nN observations : {result['nobs']:.0f}")
+    print(f"Adjusted R-sq  : {result['rsquared_adj']:.4f}")
 
-    _print_interpretation(result.params, result.pvalues, terms)
+    _print_interpretation(result["params"], result["p"], terms)
 
 
 def _print_results_twoway(res_dict, terms):
@@ -671,8 +639,15 @@ def _print_results_twoway(res_dict, terms):
     print(f"Adjusted R-sq  : {res_dict['rsquared_adj']:.4f}")
 
 
+def _absorbed_summary_text(res_dict, terms):
+    """Returns text summary for absorbed fixed-effects results."""
+    lines = [f"Covariance: {res_dict.get('cov_label', 'clustered')}"]
+    lines.append(_twoway_summary_text(res_dict, terms))
+    return "\n".join(lines)
+
+
 def _twoway_summary_text(res_dict, terms):
-    """Returns text summary of two-way clustered results."""
+    """Returns text summary of clustered results."""
     lines = []
     valid_terms = [t for t in terms if t in res_dict["params"].index]
     lines.append(f"{'Term':<20s} {'Coef':>10s} {'SE':>10s} "
@@ -694,15 +669,15 @@ def _twoway_summary_text(res_dict, terms):
 def _print_interpretation(coefs, pvals, terms):
     """Prints coefficient interpretation."""
     labels = {
-        "b1_term":       "β₁  Baseline propagation      (Shock × w_i)",
-        "b2_term":       "β₂  Liquidity channel          (Shock × w_i × Illiq_j)",
-        "b4_term":       "β₄  Arbitrage channel          (Shock × w_i × Mispricing)",
-        "b5_term":       "β₅  Informational spillover    (Shock × Similarity)",
-        "asym_term":     "δ   Negative asymmetry         (Neg × Shock × w_i)",
-        "Illiq_j":       "γ₁  Illiquidity main effect",
-        "Mispricing_k":  "γ₂  Mispricing main effect",
-        "Similarity_ij": "γ₃  Similarity main effect",
-        "Neg_e":         "γ₄  Negative shock main effect",
+        "b1_term":       "Beta1  Baseline propagation      (Shock x w_i)",
+        "b2_term":       "Beta2  Liquidity channel          (Shock x w_i x Illiq_j)",
+        "b4_term":       "Beta4  Arbitrage channel          (Shock x w_i x Mispricing)",
+        "b5_term":       "Beta5  Informational spillover    (Shock x Similarity)",
+        "asym_term":     "Delta   Negative asymmetry         (Neg x Shock x w_i)",
+        "Illiq_j":       "Gamma1  Illiquidity main effect",
+        "Mispricing_k":  "Gamma2  Mispricing main effect",
+        "Similarity_ij": "Gamma3  Similarity main effect",
+        "Neg_e":         "Gamma4  Negative shock main effect",
     }
     print("\n-- Interpretation --")
     for term in terms:
@@ -718,16 +693,16 @@ def _print_interpretation(coefs, pvals, terms):
 def _plot_coefs(result, terms):
     """Saves a coefficient plot."""
     labels = {
-        "b1_term":   "β₁ Baseline",
-        "b2_term":   "β₂ Liquidity",
-        "b4_term":   "β₄ Arbitrage",
-        "b5_term":   "β₅ Informational",
-        "asym_term": "δ Asymmetry",
+        "b1_term":   "Beta1 Baseline",
+        "b2_term":   "Beta2 Liquidity",
+        "b4_term":   "Beta4 Arbitrage",
+        "b5_term":   "Beta5 Informational",
+        "asym_term": "Delta Asymmetry",
     }
     fig, ax = plt.subplots(figsize=(8, 4))
-    vals   = [result.params[t] for t in terms]
+    vals   = [result["params"][t] for t in terms]
     short  = [labels[t] for t in terms]
-    colors = ["#E24B4A" if result.pvalues[t] < 0.05 else "#888780"
+    colors = ["#E24B4A" if result["p"][t] < 0.05 else "#888780"
               for t in terms]
     ax.barh(short, vals, color=colors, height=0.5)
     ax.axvline(0, color="#2C2C2A", linewidth=0.8, linestyle="--")
@@ -771,9 +746,9 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
         print(tbl.loc[valid_terms, available_cols])
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 # MAIN
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
 
 if __name__ == "__main__":
 
@@ -820,7 +795,7 @@ if __name__ == "__main__":
 
         # Identify shocks (event-specific threshold)
         print(f"\n  Identifying shocks "
-              f"(threshold={SHOCK_THRESHOLD}σ, event-specific)...")
+              f"(threshold={SHOCK_THRESHOLD}sigma, event-specific)...")
         shocks = identify_shocks_vectorized(ret_stocks, ret_bench)
         print(f"  Shocks identified: {len(shocks):,}")
 
@@ -867,5 +842,15 @@ if __name__ == "__main__":
 
         # Run regression
         run_regression(full_panel)
+
+
+
+
+
+
+
+
+
+
 
 
