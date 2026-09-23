@@ -1,4 +1,4 @@
-# TFM - Intra-ETF Shock Transmission
+# Intra-ETF Shock Transmission
 
 This repository contains the code for my Master's Thesis on intra-ETF shock transmission.
 
@@ -32,7 +32,7 @@ python -m pip install -r requirements.txt
 
 Useful options:
 
-```powershell
+```text
 python run_all.py --dry-run
 python run_all.py --stage pipeline
 python run_all.py --stage models
