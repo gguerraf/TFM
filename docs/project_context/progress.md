@@ -164,17 +164,38 @@ The receiver-weight channel is also positive and significant, which means that t
 
 The predictive results are more mixed. The expanded features do not improve LightGBM's out-of-sample R2, although directional accuracy remains higher than OLS. The neural network remains similar in R2 and improves slightly in directional accuracy. This means the new variables are valuable for econometric interpretation, but not enough to justify a GNN as a core model.
 
-## Remaining Work
 
-Short-term priorities:
+## Extension Results Added on 2026-09-23
 
-1. Decide whether all three new channels should remain in the final thesis specification or whether one should be presented as a robustness extension.
-2. Use `results_interpretation.md` as the basis for the thesis results section.
-3. Consider whether LightGBM needs a simpler feature set because the latest expanded feature set worsens test R2.
-4. Keep `holdings/`, generated results and local machine-specific files out of GitHub.
+The previously planned methodological extensions have now been implemented and executed. This changes the project status: LOO/LTO benchmarks, Local Projections, Fama-French / Carhart robustness, pooled ETF interactions and quantile diagnostics are no longer only future work.
 
-Potential future extensions:
+Main interpretation updates:
 
-- Add ETF flow or creation/redemption proxy if shares outstanding data can be obtained reliably.
-- Add a market-state or volatility-regime interaction.
-- Consider a GNN only as a future extension, not as a core model, because the current ML evidence is still limited.
+1. Benchmark robustness supports the negative `b1_term` under synthetic ETF benchmarks. The LTO specification using `ETF(-i,-j)` still gives a negative and highly significant direct term. This reduces the concern that the main negative `b1_term` is only caused by benchmark absorption.
+2. Local Projections show that the negative direct channel is not only an immediate one-day result. It remains negative from `h=0` to `h=10`, with the strongest magnitude around the original `h=3` event window.
+3. Factor robustness is mixed and should be discussed carefully. FF5+momentum changes the direct channel substantially, but the return-comovement channel remains strong.
+4. ETF-specific pooled interactions confirm that heterogeneity across `XME`, `XLE`, `IHE`, and `XLV` should be part of the thesis interpretation.
+5. Quantile regression supports tail stability as a secondary diagnostic, but it should not be presented as strongly as the fixed-effects results.
+
+## Current Remaining Work
+
+At this point, the expanded model with w_j, Corr_ij_60d and HHI_etf_t has been implemented, executed, documented and pushed in commit d5049a8 with message dding new variables to the models. After that commit, the benchmark and model extensions were implemented and executed locally: LOO/LTO benchmark robustness, Local Projections, FF5+momentum robustness, pooled ETF interactions and quantile diagnostics.
+
+A new ETF-level interpretation document has also been added at docs/project_context/etf_model_results_interpretation.md. This document should be the main source for writing the thesis results section because it separates the evidence by ETF and by model family. It keeps the previous expanded-model interpretation intact, so the thesis can explain what changed after adding the new variables and after adding the benchmark/factor robustness checks.
+
+The current short-term work is no longer to implement the main extensions. The short-term work is now:
+
+1. Review the new scripts manually before committing them.
+2. Review the new ETF-level interpretation document and decide which results will enter the thesis narrative.
+3. Decide how to present the benchmark comparison: external benchmark as the main specification, with LOO/LTO as robustness, or both side by side.
+4. Decide how to present the factor robustness result, because FF5+momentum changes the direct 1_term but leaves corr_term strong.
+5. Keep generated data, holdings, local results and local machine-specific files out of GitHub.
+6. Run a privacy scan before any future commit or push.
+
+Lower-priority extensions remain possible but are not necessary for the next commit:
+
+- Matched-control or DiD designs are academically strong but require more data engineering.
+- Double/Debiased ML is interesting but does not solve the benchmark construction issue, so it is not a priority.
+- ETF flow or creation/redemption proxies can be added if shares outstanding data can be obtained reliably.
+- Market-state or volatility-regime interactions may be useful later.
+- A GNN should remain future work only, because the current econometric model already includes graph-like variables and the ML evidence does not justify the extra complexity as a core thesis model.

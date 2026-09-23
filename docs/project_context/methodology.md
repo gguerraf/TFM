@@ -88,6 +88,20 @@ Using the ETF itself as the benchmark index creates severe endogeneity and colli
 
 ---
 
+### 4.1 Benchmark Risk to Test Next
+
+The current external benchmarks remain the main reference specification. They are economically motivated and avoid using the ETF itself as the benchmark in the primary model. However, they do not fully eliminate overlap risk. Some external benchmarks can still contain the shocked stock or the receiver stock, especially in large sector funds such as health care and energy.
+
+For this reason, the next methodological extension should test synthetic leave-one-out and leave-two-out ETF benchmarks. The key idea is:
+
+- For shock identification of stock i, use ETF(-i), so the shocked stock is not included in its own benchmark.
+- For receiver abnormal return of stock j, use ETF(-i,-j) when possible, so neither the shocked stock nor the receiver stock is included in the receiver benchmark.
+- If ETF(-i,-j) becomes too noisy in smaller ETFs, report ETF(-j) or ETF(-i) as fallback robustness checks.
+
+This check is important before finalizing the interpretation of the negative b1_term. If b1_term changes sign or becomes much smaller under leave-two-out benchmarks, part of the previous result may come from benchmark absorption rather than true economic reversal.
+
+---
+
 ## 5. Panel Construction & Filtering
 
 For each identified shock event $e = (stock_i, t_0)$ occurring in ETF $k$, the observation unit is the pair $(e, stock_j)$ for all co-constituents $j \neq i$ present in ETF $k$ on date $t_0$.
@@ -208,10 +222,44 @@ To establish the validity of the empirical results against model assumptions, th
     Replaces Amihud illiquidity with share turnover ($\text{Volume} / \text{Shares Outstanding}$) and Roll (1984) effective bid-ask spread proxy to confirm the liquidity channel.
 11. **Contamination Window Sensitivity ($[t_0 - 1, t_0 + 1]$ vs $[t_0 - 5, t_0 + 5]$):**
     Varies the strictness of the overlapping event exclusion filter.
-12. **Pure Leave-One-Out ETF Return Benchmark:**
-    Re-estimates receiver abnormal returns using the leave-one-out basket return:
-    $$AR_{k,t}^{(-i)} = \frac{R_{k,t} - w_{i,t} R_{i,t}}{1 - w_{i,t}}$$
-    to directly compare sector benchmarking with synthetic basket residualization.
+12. **Leave-One-Out / Leave-Two-Out Synthetic ETF Benchmark:**
+    Re-estimates the abnormal returns using synthetic ETF benchmarks built from the ETF constituents themselves, excluding the stock or stocks that could mechanically contaminate the benchmark.
+
+    Planned implementation:
+
+    - For shock identification of stock i: use ETF(-i).
+    - For receiver abnormal return of stock j: use ETF(-i,-j) when possible.
+    - Compare against ETF(-j), ETF(-i), and the current external benchmark if the leave-two-out version is unstable.
+
+    Academic purpose:
+
+    - Tests whether the negative b1_term is robust to benchmark construction.
+    - Tests whether the current external benchmarks mechanically absorb part of the shock or receiver movement.
+    - Gives a clean diagnostic before moving to more complex models.
+
+## 10. Planned Model Extensions After Benchmark Robustness
+
+The agreed order for future work is:
+
+1. Leave-one-out / leave-two-out benchmark robustness.
+2. Local Projections following Jorda (2005), with horizons h=0,...,10, to study dynamic transmission.
+3. Fama-French / Carhart factor robustness, to check dependence on the expected-return model.
+4. Pooled ETF-specific interaction tests, to formally test heterogeneity across funds.
+5. Quantile regression as a secondary extension for tail spillovers.
+
+Matched-control / DiD designs, Double/Debiased ML and GNNs are not the immediate priority. They may be useful later, but they do not solve the main open issue: whether abnormal returns are sensitive to benchmark construction.
 
 
+## 11. Implemented Extensions and How to Interpret Them
 
+The planned benchmark and model extensions have now been implemented in scripts `24` to `28`.
+
+The benchmark robustness script compares the main external-benchmark design with synthetic ETF benchmarks. For shock identification, it uses `ETF(-i)`. For receiver abnormal returns, it estimates both `ETF(-i,-j)` and `ETF(-j)` variants. The key result is that the direct coefficient remains negative and statistically significant under these synthetic benchmarks.
+
+The Local Projections script estimates the model separately for horizons `h=0,...,10`. This gives an impulse-response-style view of the transmission path and shows that the negative direct term remains visible beyond the original event window.
+
+The factor-robustness script uses Fama-French 5 factors plus momentum. This check shows that the direct channel is sensitive to abnormal-return construction, while the return-comovement channel remains robust.
+
+The pooled ETF-interaction script formally tests whether channels differ by ETF, instead of relying only on separate ETF regressions.
+
+The quantile-regression script is a secondary diagnostic. It uses ETF and year-quarter controls, but not the full receiver fixed effects, so it should be interpreted as descriptive evidence about tails rather than as the main causal/econometric result.

@@ -159,3 +159,36 @@ The analytical pipeline follows an end-to-end reproducible workflow:
 - **Robustness Executed:** Robustness checks include sign splits, pre/post-COVID splits, per-ETF regressions, top-weight exclusion, trimming, placebo event assignment, randomized receiver membership, shuffled outcomes and no year-quarter fixed effects.
 - **ML/NN Executed:** The project includes OLS, LightGBM and a supervisor-aligned tanh neural network baseline. The latest ML evidence does not strongly justify a GNN as a core thesis model.
 
+---
+
+## 9. Decision Point After Expanded Model
+
+This note records the state of the project after the expanded model was implemented and pushed in commit d5049a8, with message adding new variables to the models.
+
+At this point, the project has already:
+
+- Executed the improved econometric model.
+- Added receiver weight, pre-event return comovement and ETF concentration.
+- Re-ran robustness checks and ML/NN baselines.
+- Documented both the previous improved specification and the expanded specification.
+
+The next methodological decision is to focus on benchmark robustness before adding more complex models. The current external benchmarks remain valid as the main reference specification, but they may still contain important ETF constituents. This can create benchmark absorption: the benchmark may partly include the same stock movement that the model is trying to isolate.
+
+The agreed next step is to test leave-one-out and leave-two-out synthetic ETF benchmarks:
+
+- ETF(-i) for shock identification.
+- ETF(-i,-j) for receiver abnormal returns when feasible.
+- ETF(-j) or ETF(-i) as fallback checks when the leave-two-out benchmark is unstable.
+
+The main reason is interpretability. The negative b1_term is one of the central findings, but it should not be interpreted as final until the benchmark absorption issue is tested.
+
+After that, the most useful extensions are Local Projections, Fama-French / Carhart factor robustness and formal ETF-specific interactions. Quantile regression is secondary. Matched controls, Double/Debiased ML and GNNs are lower priority or future work.
+
+
+## 10. Current State After Running Extensions
+
+The project has now moved beyond the expanded baseline model. The main robustness extensions have been implemented and executed.
+
+The most important conclusion is that synthetic ETF benchmark robustness supports the negative direct channel: `b1_term` remains negative under `ETF(-i,-j)` receiver benchmarks. However, Fama-French / Carhart robustness shows that the direct channel is sensitive to the expected-return model. The most stable positive mechanism across specifications is the return-comovement channel, `corr_term`.
+
+The next thesis-writing task should be to explain this distinction clearly: the direct channel is robust to ETF benchmark absorption checks but not fully invariant to factor-model abnormal returns; the connectedness channel is more stable.

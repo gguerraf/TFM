@@ -176,10 +176,33 @@ Interpretation:
 
 ## How to Continue
 
-Best next steps:
+This is the current decision point after the latest local work:
 
-1. Decide whether all three new channels should remain in the final thesis specification or whether one should be presented as a robustness extension.
-2. If simplifying the model, compare against both documented result versions before removing terms.
-3. Consider a simpler ML feature set if predictive R2 matters, because LightGBM worsened after adding the expanded features.
-4. Re-run `21_estimate_improved_model.py`, `22_run_robustness_checks.py`, and `23_run_ml_baselines.py` after any model change.
-5. Update `README.md`, `docs/project_context/progress.md`, `docs/project_context/methodology.md`, `docs/project_context/architecture.md`, `docs/project_context/results_interpretation.md`, and this handoff document after any substantive code change.
+- The expanded model has already been implemented and executed.
+- The benchmark and model extensions have already been implemented and executed.
+- Scripts 24 through 29 are present locally.
+- A detailed ETF-level interpretation document has been added at docs/project_context/etf_model_results_interpretation.md.
+- The latest pushed code state before these local extension edits is commit d5049a8 with message adding new variables to the models.
+- The current local work should not be committed or pushed until the user reviews the scripts and gives explicit approval.
+
+The priority is now review and interpretation, not new model implementation. Any future AI should first read the new ETF-level interpretation document, then inspect the extension scripts and generated summaries. The main open task is to decide how to explain the results in the thesis, especially the negative direct channel, the stable positive comovement channel, ETF heterogeneity and the sensitivity of factor-model abnormal returns.
+
+Before any future commit or push, run a privacy review. Do not commit raw holdings, generated model outputs, local paths, credentials, temporary files or machine-specific files.
+
+## Handoff Update After Implementing Extensions
+
+Scripts `24` through `29` have now been added and executed successfully.
+
+Do not describe LOO/LTO, Local Projections, Fama-French / Carhart robustness, ETF interactions, quantile regression, or ETF-level result compilation as merely planned work anymore. They are implemented and have generated local outputs under `holdings/results/` and `holdings/figures/`.
+
+Important result memory:
+
+- LOO/LTO benchmark robustness: `b1_term` remains negative and significant. This reduces benchmark absorption concerns.
+- Local Projections: `b1_term` remains negative through `h=10`; `corr_term` remains positive.
+- FF5+momentum: direct `b1_term` is sensitive and can become insignificant when using factor-surviving events; `corr_term` remains strongly positive.
+- ETF interactions: heterogeneity is real and should be discussed formally.
+- Quantile regression: secondary diagnostic only, but it supports negative `b1_term` across the distribution.
+- ETF-level compilation: `29_compile_etf_results.py` creates summary CSVs used by `docs/project_context/etf_model_results_interpretation.md`.
+
+Matched-control / DiD and DML / GNN have not been implemented and remain lower priority.
+Implementation note: `26_run_factor_robustness.py` was reviewed after implementation. The factor robustness merge keys must include `etf` to avoid cross-ETF contamination when the same stock appears in multiple ETFs. The local factor robustness outputs were regenerated after this fix.

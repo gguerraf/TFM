@@ -112,6 +112,33 @@ ML comparison before and after the expanded variables:
 
 The expanded feature set does not improve predictive R2 for LightGBM. However, LightGBM feature importance shows that the new variables are used by the model, especially `corr_term`, `w_j`, `HHI_etf_t` and `Corr_ij_60d`. This suggests that the variables contain signal, but the signal is not stable enough to improve out-of-sample R2 in the current temporal split.
 
+## Open Interpretation Risk: Benchmark Absorption
+
+The most important open interpretation issue is the negative b1_term. At the moment, the result can be read as evidence of relative-price adjustment, short-term reversal, substitution, or rebalancing after a shock. However, this interpretation should remain provisional until benchmark robustness is completed.
+
+The reason is that some external benchmarks can still include the shocked stock or the receiver stock. If the shocked stock is inside the benchmark, part of the shock may be absorbed into the benchmark return. If the receiver stock is inside the benchmark, the receiver abnormal return may be mechanically compressed. This can affect both the magnitude and the sign of the estimated direct propagation term.
+
+The agreed next diagnostic is therefore:
+
+1. Use ETF(-i) for identifying shocks to stock i.
+2. Use ETF(-i,-j) for receiver abnormal returns of stock j when feasible.
+3. Compare these results with the current external-benchmark results.
+
+If b1_term remains negative under the leave-two-out benchmark, the reversal/rebalancing interpretation becomes much stronger. If b1_term weakens or changes sign, the thesis should explain that benchmark absorption was an important driver of the earlier negative coefficient.
+
+
+## Interpretation After Benchmark and Model Extensions
+
+The new extensions give a clearer interpretation of the previous results.
+
+The strongest update comes from LOO/LTO benchmark robustness. The concern was that the negative `b1_term` could be mechanically generated if the benchmark absorbed the shocked stock or the receiver stock. After recomputing shocks with `ETF(-i)` and receiver abnormal returns with `ETF(-i,-j)`, the direct term remains negative and highly significant. This means the reversal/rebalancing interpretation is stronger than before.
+
+Local Projections also support this interpretation. The direct term is negative at all horizons from `h=0` to `h=10`, while the return-comovement channel remains positive. This suggests that the main result is not only a one-day artifact.
+
+The Fama-French / Carhart check is the main caution. Under FF5+momentum abnormal returns, the direct channel is sensitive and can lose significance when only factor-surviving shocks are used. Therefore, the thesis should present the direct `b1` result as robust to synthetic ETF benchmark construction, but sensitive to the expected-return model. By contrast, `corr_term` is consistently positive and is now one of the most stable findings.
+
+The quantile diagnostic shows that `b1_term` is negative across the distribution of receiver abnormal returns and that `corr_term` is positive across quantiles. Because this diagnostic does not include the full receiver fixed effects, it should be used as supporting evidence rather than as a main specification.
+
 ## Should We Build a Graph Neural Network?
 
 A graph neural network is still not strongly justified as a core thesis model. The econometric model now already includes graph-like information through pre-event return correlation and economic similarity. The latest ML results do not show a large predictive gain that would justify the extra complexity of a GNN.

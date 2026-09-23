@@ -1,29 +1,4 @@
-"""
-23_run_ml_baselines.py
-==================
-Machine Learning baseline for the intra-ETF spillover model.
-
-Fits a LightGBM regressor and a simple feed-forward neural network
-on the same panel data used by the econometric model. Compares
-predictive performance via temporal train/val/test splits.
-
-Neural network follows supervisor guidance:
-  - Fixed tanh activation (smooth, infinitely differentiable)
-  - Modest hyperparameter grid: layers, nodes per layer
-  - MSE loss, Adam optimizer
-
-Requires:
-    results/panel_improved.csv  (from 21_estimate_improved_model.py)
-    processed/returns_clean.csv (for additional features)
-
-Outputs:
-    results/ml_results.txt
-    results/lgbm_feature_importance.csv
-    figures/shap_summary.png
-    figures/lgbm_vs_ols.png
-    figures/nn_training_curve.png
-    results/nn_grid_results.csv
-"""
+"""Run ML baselines"""
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -40,10 +15,6 @@ import lightgbm as lgb
 import shap
 import json
 
-# ================================================================================
-# CONFIGURATION
-# ================================================================================
-
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
 OUTPUT_DIR = BASE_DIR / "results"
@@ -51,7 +22,6 @@ FIG_DIR    = BASE_DIR / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True)
 FIG_DIR.mkdir(exist_ok=True)
 
-# Feature columns for ML models
 FEATURE_COLS = [
     "Shock_i", "w_i", "w_j", "Illiq_j", "Mispricing_k",
     "Similarity_ij", "Corr_ij_60d", "HHI_etf_t", "Neg_e",
@@ -60,21 +30,16 @@ FEATURE_COLS = [
 
 TARGET_COL = "AR_j"
 
-# Temporal split dates
 TRAIN_END  = "2021-12-31"
 VAL_END    = "2023-12-31"
-# Test: 2024-01-01 onward
+
 NN_MAX_TRAIN_OBS = 80000
 NN_MAX_EPOCHS = 40
 NN_PATIENCE = 5
 NN_CURVE_EPOCHS = 40
 
-# ================================================================================
-# STEP 0: LOAD AND PREPARE DATA
-# ================================================================================
-
 def load_and_prepare():
-    """Load panel and prepare features for ML."""
+    """Load panel and prepare features for ML"""
     panel_path = OUTPUT_DIR / "panel_improved.csv"
     if not panel_path.exists():
         print(f"[ERROR] {panel_path} not found. Run 21_estimate_improved_model.py first.")
@@ -83,26 +48,21 @@ def load_and_prepare():
     panel = pd.read_csv(panel_path, parse_dates=["t0"])
     print(f"Panel loaded: {panel.shape}")
 
-    # Feature engineering: add extra features available from the panel
     panel["abs_shock"] = panel["Shock_i"].abs()
     panel["shock_x_weight"] = panel["Shock_i"] * panel["w_i"]
 
-    # Add year, month features for seasonality
     panel["year"] = panel["t0"].dt.year
     panel["month"] = panel["t0"].dt.month
 
-    # Extended feature set
     features = FEATURE_COLS + ["abs_shock", "shock_x_weight", "year", "month"]
 
-    # Drop rows with NaN in features or target
     df = panel.dropna(subset=features + [TARGET_COL]).copy()
     print(f"After dropping NaN: {len(df):,} observations")
 
     return df, features
 
-
 def temporal_split(df, features):
-    """Split data temporally: train / validation / test."""
+    """Split data temporally: train / validation / test"""
     train = df[df["t0"] <= TRAIN_END]
     val   = df[(df["t0"] > TRAIN_END) & (df["t0"] <= VAL_END)]
     test  = df[df["t0"] > VAL_END]
@@ -122,13 +82,12 @@ def temporal_split(df, features):
     return (X_train, y_train, X_val, y_val, X_test, y_test,
             train, val, test, features)
 
-
 def evaluate(y_true, y_pred, label):
-    """Compute and print evaluation metrics."""
+    """Compute and print evaluation metrics"""
     r2  = r2_score(y_true, y_pred)
     mse = mean_squared_error(y_true, y_pred)
     mae = mean_absolute_error(y_true, y_pred)
-    # Directional accuracy: does the predicted sign match the actual sign?
+
     dir_acc = np.mean(np.sign(y_pred) == np.sign(y_true))
 
     print(f"  {label}:")
@@ -140,14 +99,9 @@ def evaluate(y_true, y_pred, label):
     return {"label": label, "R2": r2, "MSE": mse, "MAE": mae,
             "DirAcc": dir_acc}
 
-
-# ================================================================================
-# STEP 1: LIGHTGBM BASELINE
-# ================================================================================
-
 def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
                  feature_names, log_lines):
-    """Fit LightGBM and evaluate."""
+    """Fit LightGBM and evaluate"""
     print("\n" + "=" * 60)
     print("LIGHTGBM BASELINE")
     print("=" * 60)
@@ -181,7 +135,6 @@ def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
         callbacks=[lgb.early_stopping(50), lgb.log_evaluation(100)],
     )
 
-    # Predictions
     pred_train = model.predict(X_train)
     pred_val   = model.predict(X_val)
     pred_test  = model.predict(X_test)
@@ -197,19 +150,16 @@ def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
         log_lines.append(f"  {r['label']}: R2={r['R2']:.6f}, "
                          f"MAE={r['MAE']:.6f}, DirAcc={r['DirAcc']:.4f}")
 
-    # Feature importance
     importance = pd.DataFrame({
         "feature": feature_names,
         "importance": model.feature_importance(importance_type="gain"),
     }).sort_values("importance", ascending=False)
     importance.to_csv(OUTPUT_DIR / "lgbm_feature_importance.csv", index=False)
-    print(f"\nFeature importance saved.")
 
-    # SHAP analysis
-    print("Computing SHAP values (this may take a minute)...")
+    print("Computing SHAP values")
     try:
         explainer = shap.TreeExplainer(model)
-        # Use a sample for speed
+
         sample_size = min(5000, len(X_val))
         X_sample = X_val[:sample_size]
         shap_values = explainer.shap_values(X_sample)
@@ -221,24 +171,14 @@ def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
         plt.tight_layout()
         plt.savefig(FIG_DIR / "shap_summary.png", dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"SHAP summary plot saved.")
     except Exception as e:
         print(f"  [WARN] SHAP computation failed: {e}")
 
     return model, r_test
 
-
-# ================================================================================
-# STEP 2: NEURAL NETWORK (tanh activation, modest grid)
-# ================================================================================
-
 def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
                        feature_names, log_lines):
-    """
-    Feed-forward neural network with tanh activation.
-    Grid search over: hidden layers (1, 2, 3) x nodes per layer (16, 32, 64).
-    Following supervisor guidance: activation fixed to tanh.
-    """
+    """Run a tanh neural network grid"""
     try:
         import torch
         import torch.nn as nn
@@ -253,13 +193,11 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
     print("NEURAL NETWORK (tanh activation)")
     print("=" * 60)
 
-    # Standardize features
     scaler = StandardScaler()
     X_tr = scaler.fit_transform(X_train)
     X_va = scaler.transform(X_val)
     X_te = scaler.transform(X_test)
 
-    # Convert to tensors
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"  Device: {device}")
 
@@ -282,7 +220,6 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
 
     input_dim = X_tr.shape[1]
 
-    # Define model class
     class SpilloverNN(nn.Module):
         def __init__(self, input_dim, hidden_layers, nodes_per_layer,
                      dropout=0.0):
@@ -291,17 +228,16 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
             prev_dim = input_dim
             for _ in range(hidden_layers):
                 layers.append(nn.Linear(prev_dim, nodes_per_layer))
-                layers.append(nn.Tanh())   # Fixed activation per supervisor
+                layers.append(nn.Tanh())
                 if dropout > 0:
                     layers.append(nn.Dropout(dropout))
                 prev_dim = nodes_per_layer
-            layers.append(nn.Linear(prev_dim, 1))  # Output layer (linear)
+            layers.append(nn.Linear(prev_dim, 1))
             self.net = nn.Sequential(*layers)
 
         def forward(self, x):
             return self.net(x)
 
-    # Modest grid focused on the supervisor's suggested parameters.
     grid = {
         "hidden_layers": [1, 2, 3],
         "nodes_per_layer": [16, 32, 64],
@@ -337,7 +273,6 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
         optimizer = torch.optim.Adam(model.parameters(), lr=cfg["learning_rate"])
         criterion = nn.MSELoss()
 
-        # Training
         dataset = TensorDataset(X_fit_t, y_fit_t)
         loader  = DataLoader(dataset, batch_size=cfg["batch_size"], shuffle=True)
 
@@ -355,7 +290,6 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
                 loss.backward()
                 optimizer.step()
 
-            # Validation loss
             model.eval()
             with torch.no_grad():
                 val_pred = model(X_va_t)
@@ -370,7 +304,6 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
                 if patience_counter >= patience:
                     break
 
-        # Record this config's result
         model.load_state_dict(epoch_state)
         model.eval()
         with torch.no_grad():
@@ -390,14 +323,11 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
             best_config = cfg
             best_model_state = epoch_state
 
-    # Save grid results
     grid_df = pd.DataFrame(grid_results).sort_values("val_loss")
     grid_df.to_csv(OUTPUT_DIR / "nn_grid_results.csv", index=False)
-    print(f"\n  Grid search results saved.")
     print(f"  Best config: {best_config}")
     print(f"  Best val loss: {best_val_loss:.8f}")
 
-    # Final evaluation on test set
     final_model = SpilloverNN(
         input_dim, best_config["hidden_layers"],
         best_config["nodes_per_layer"], best_config["dropout"]
@@ -422,8 +352,6 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
         log_lines.append(f"  {r['label']}: R2={r['R2']:.6f}, "
                          f"MAE={r['MAE']:.6f}, DirAcc={r['DirAcc']:.4f}")
 
-    # Plot training curve for best config
-    # (Re-train with recording)
     try:
         model2 = SpilloverNN(input_dim, best_config["hidden_layers"],
                              best_config["nodes_per_layer"],
@@ -465,19 +393,13 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
         plt.tight_layout()
         plt.savefig(FIG_DIR / "nn_training_curve.png", dpi=150)
         plt.close()
-        print(f"  Training curve saved.")
     except Exception as e:
         print(f"  [WARN] Training curve plot failed: {e}")
 
     return final_model, r_test
 
-
-# ================================================================================
-# STEP 3: OLS BASELINE FOR COMPARISON
-# ================================================================================
-
 def ols_baseline(X_train, y_train, X_test, y_test, feature_names, log_lines):
-    """Simple OLS baseline for comparison (no fixed effects)."""
+    """Simple OLS baseline for comparison (no fixed effects)"""
     from sklearn.linear_model import LinearRegression
 
     print("\n" + "=" * 60)
@@ -502,11 +424,6 @@ def ols_baseline(X_train, y_train, X_test, y_test, feature_names, log_lines):
 
     return r_test
 
-
-# ================================================================================
-# MAIN
-# ================================================================================
-
 if __name__ == "__main__":
     log_lines = []
 
@@ -514,21 +431,17 @@ if __name__ == "__main__":
     (X_train, y_train, X_val, y_val, X_test, y_test,
      train_df, val_df, test_df, feature_names) = temporal_split(df, features)
 
-    # OLS baseline
     ols_result = ols_baseline(X_train, y_train, X_test, y_test,
                               feature_names, log_lines)
 
-    # LightGBM
     lgbm_model, lgbm_result = run_lightgbm(
         X_train, y_train, X_val, y_val, X_test, y_test,
         feature_names, log_lines)
 
-    # Neural Network
     nn_model, nn_result = run_neural_network(
         X_train, y_train, X_val, y_val, X_test, y_test,
         feature_names, log_lines)
 
-    # Comparison plot
     print("\n" + "=" * 60)
     print("MODEL COMPARISON")
     print("=" * 60)
@@ -558,23 +471,15 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig(FIG_DIR / "lgbm_vs_ols.png", dpi=150)
     plt.close()
-    print(f"Comparison plot saved: {FIG_DIR / 'lgbm_vs_ols.png'}")
 
-    # Save full log
     log_path = OUTPUT_DIR / "ml_results.txt"
     with open(log_path, "w") as f:
         f.write("\n".join(log_lines))
-    print(f"ML results saved: {log_path}")
 
-    # Decision: should we proceed to GNN?
     if lgbm_result and ols_result:
         r2_improvement = lgbm_result["R2"] - ols_result["R2"]
         dir_improvement = lgbm_result["DirAcc"] - ols_result["DirAcc"]
         print(f"\nLightGBM vs OLS:")
         print(f"  R2 improvement     : {r2_improvement:+.4f}")
         print(f"  DirAcc improvement : {dir_improvement:+.4f}")
-        if r2_improvement > 0.02 or dir_improvement > 0.03:
-            print("  ==> ML shows meaningful improvement. GNN may be justified.")
-        else:
-            print("  ==> ML shows limited improvement. GNN unlikely to add value.")
 

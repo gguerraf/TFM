@@ -1,34 +1,18 @@
-"""
-05_apply_ticker_mappings.py
-====================
-Handles tickers that changed name, were acquired, or were relisted under
-a different symbol. For each case, downloads the current ticker's history
-and concatenates it with the old ticker's history to build a continuous
-price series covering 2014-2026.
-
-Inputs:
-    processed/prices_raw.csv
-
-Outputs:
-    processed/prices_raw.csv    Updated with patched continuous series
-    processed/rename_report.csv Summary of what was patched
-"""
+"""Apply ticker mappings to price data"""
 
 import pandas as pd
 import numpy as np
 import yfinance as yf
 from pathlib import Path
 
-# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR  = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR  = BASE_DIR / "processed"
 
 START_DATE = "2014-01-01"
 END_DATE   = "2026-02-12"
 
-# --- TICKER MAPPING -----------------------------------------------------------
 TICKER_MAP = {
-    # Renames (company still public, different ticker)
+
     "ANTM":  {"new": "ELV",   "event_date": "2022-06-28", "action": "rename",
                "note": "Anthem -> Elevance Health"},
     "BHGE":  {"new": "BKR",   "event_date": "2019-09-16", "action": "rename",
@@ -60,7 +44,6 @@ TICKER_MAP = {
     "WRK":   {"new": "SMFG",  "event_date": "2024-07-01", "action": "rename",
                "note": "WestRock merged -> Smurfit WestRock SMFG"},
 
-    # Acquisitions (fully delisted)
     "CERN":  {"new": None, "event_date": "2022-06-07",  "action": "acquired",
                "note": "Cerner acquired by Oracle"},
     "PBCT":  {"new": None, "event_date": "2022-02-22",  "action": "acquired",
@@ -100,7 +83,6 @@ TICKER_MAP = {
     "RETA":  {"new": None, "event_date": "2023-03-08",  "action": "acquired",
                "note": "Reata -> Biogen"},
 
-    # Still active - just failed download previously
     "MMC":   {"new": "MMC",  "event_date": None, "action": "retry",
                "note": "Marsh McLennan - active"},
     "IPG":   {"new": "IPG",  "event_date": None, "action": "retry",
@@ -141,17 +123,10 @@ TICKER_MAP = {
                "note": "CymaBay Therapeutics - active"},
 }
 
-
-# --- HELPER FUNCTIONS ---------------------------------------------------------
-
 def download_ticker(ticker: str,
                     start: str = START_DATE,
                     end:   str = END_DATE) -> pd.Series:
-    """
-    Downloads adjusted close prices for a single ticker.
-    Always returns a pd.Series with a DatetimeIndex.
-    Returns an empty Series (with DatetimeIndex) on failure.
-    """
+    """Downloads adjusted close prices for a single ticker"""
     empty = pd.Series(dtype=float,
                       index=pd.DatetimeIndex([]),
                       name=ticker)
@@ -165,18 +140,14 @@ def download_ticker(ticker: str,
             close = close.iloc[:, 0]
         close = close.dropna()
         close.name = ticker
-        # Ensure DatetimeIndex
+
         close.index = pd.to_datetime(close.index)
         return close if len(close) > 20 else empty
     except Exception:
         return empty
 
-
 def to_dt_series(s) -> pd.Series:
-    """
-    Converts any Series or None to a Series with a proper DatetimeIndex.
-    Safe to use before any date-based filtering.
-    """
+    """Converts any Series or None to a Series with a proper DatetimeIndex"""
     if s is None:
         return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
     if not isinstance(s, pd.Series) or len(s) == 0:
@@ -188,8 +159,6 @@ def to_dt_series(s) -> pd.Series:
     except Exception:
         return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
 
-
-# --- LOAD EXISTING PRICES -----------------------------------------------------
 print("Loading prices_raw.csv...")
 
 _peek      = pd.read_csv(PROC_DIR / "prices_raw.csv", nrows=0)
@@ -198,12 +167,10 @@ _first_col = _peek.columns[0]
 prices = pd.read_csv(PROC_DIR / "prices_raw.csv",
                      index_col=_first_col, parse_dates=True)
 prices.index.name = "date"
-prices.index = pd.to_datetime(prices.index)   # guarantee DatetimeIndex
+prices.index = pd.to_datetime(prices.index)
 
 print(f"  Current shape: {prices.shape[0]} dates x {prices.shape[1]} tickers")
 
-
-# --- PROCESS EACH MAPPING -----------------------------------------------------
 report_rows = []
 n_patched   = 0
 n_skipped   = 0
@@ -216,7 +183,6 @@ for old_ticker, info in TICKER_MAP.items():
     action      = info["action"]
     note        = info["note"]
 
-    # -- RETRY: ticker still active, just failed before ------------------------
     if action == "retry":
         if old_ticker in prices.columns and not prices[old_ticker].dropna().empty:
             print(f"  [SKIP] {old_ticker}: already in prices_raw")
@@ -241,25 +207,21 @@ for old_ticker, info in TICKER_MAP.items():
                                  "note": note})
         continue
 
-    # -- RENAME: concatenate old + new series ----------------------------------
     if action == "rename":
-        # Get old series from existing prices or download it
+
         if old_ticker in prices.columns:
             old_series = to_dt_series(prices[old_ticker])
         else:
             old_series = download_ticker(old_ticker)
 
-        # Download new series
         new_series = download_ticker(new_ticker)
 
-        # Both empty - nothing to do
         if len(old_series) == 0 and len(new_series) == 0:
             print(f"  [FAIL] {old_ticker} -> {new_ticker}: no data for either")
             report_rows.append({"old_ticker": old_ticker, "new_ticker": new_ticker,
                                  "action": action, "status": "failed", "note": note})
             continue
 
-        # Split at event date
         if event_date is not None:
             old_part = old_series[old_series.index <= event_date]
             new_part = new_series[new_series.index >  event_date]
@@ -279,7 +241,6 @@ for old_ticker, info in TICKER_MAP.items():
                              "action": action, "status": "concatenated",
                              "note": note})
 
-    # -- ACQUIRED: use old series history only ---------------------------------
     elif action == "acquired":
         if old_ticker in prices.columns and not prices[old_ticker].dropna().empty:
             print(f"  [SKIP] {old_ticker}: acquired, history already present")
@@ -302,19 +263,15 @@ for old_ticker, info in TICKER_MAP.items():
                                      "action": action, "status": "no_history",
                                      "note": note})
 
-
-# --- SAVE UPDATED PRICES ------------------------------------------------------
 prices = prices.loc[:, ~prices.columns.duplicated()]
 prices.sort_index(inplace=True)
 prices.to_csv(PROC_DIR / "prices_raw.csv")
 print(f"\nprices_raw.csv updated: "
       f"{prices.shape[0]} dates x {prices.shape[1]} tickers")
 
-# --- SAVE RENAME REPORT -------------------------------------------------------
 report_df = pd.DataFrame(report_rows)
 report_df.to_csv(PROC_DIR / "rename_report.csv", index=False)
 
-# --- FINAL SUMMARY ------------------------------------------------------------
 print(f"\n{'=' * 55}")
 print(f"RENAME / PATCH SUMMARY")
 print(f"{'=' * 55}")
@@ -324,6 +281,4 @@ print(f"  Already present     : {n_skipped:,}")
 for status, count in report_df["status"].value_counts().items():
     print(f"  {status:<22}: {count:,}")
 print(f"\nTotal tickers in prices_raw.csv : {prices.shape[1]:,}")
-print(f"Rename report saved : {PROC_DIR / 'rename_report.csv'}")
-
 

@@ -141,3 +141,31 @@ The neural network follows supervisor guidance:
 
 The latest run does not justify a graph neural network as a core thesis model, because predictive gains remain limited.
 
+## 8. Implemented Methodological Extensions
+
+The benchmark and model extensions have now been implemented and executed. They were kept as separate scripts so the main expanded model stays stable while each robustness layer can be reproduced independently.
+
+The implemented order was:
+
+1. Leave-one-out and leave-two-out synthetic ETF benchmark robustness.
+2. Local Projections with horizons h=0,...,10.
+3. Fama-French 5-factor plus momentum abnormal-return robustness.
+4. Pooled ETF-specific interaction tests.
+5. Quantile regression as a secondary tail diagnostic.
+6. ETF-level result compilation for thesis interpretation.
+
+The key reason for this order was methodological. Benchmark construction had to be checked before interpreting more complex models, because contamination in the benchmark could affect the sign and size of the direct spillover coefficient.
+
+
+## 9. Extension Script Architecture
+
+The methodological extensions are implemented as separate scripts instead of being merged into `21_estimate_improved_model.py`. This keeps the main model stable and makes each robustness layer reproducible.
+
+| Script | Purpose | Main outputs |
+| --- | --- | --- |
+| `24_run_benchmark_robustness.py` | LOO/LTO synthetic benchmark robustness | `benchmark_robustness_summary.csv`, `benchmark_robustness_details.txt`, `benchmark_robustness_panel.csv` |
+| `25_run_local_projections.py` | Dynamic horizon-by-horizon regressions | `local_projections_summary.csv`, `local_projections_details.txt`, `local_projection_irf.png` |
+| `26_run_factor_robustness.py` | FF5+momentum abnormal return robustness | `factor_robustness_summary.csv`, `factor_robustness_details.txt`, `factor_robustness_panel.csv` |
+| `27_run_etf_interactions.py` | Pooled ETF heterogeneity tests | `etf_interactions_summary.csv`, `etf_interactions_details.txt` |
+| `28_run_quantile_regression.py` | Secondary tail diagnostic | `quantile_regression_summary.csv`, `quantile_regression_details.txt` |
+| `29_compile_etf_results.py` | ETF-level summaries for thesis interpretation | `etf_baseline_summary.csv`, `etf_benchmark_robustness_summary.csv`, `etf_factor_robustness_summary.csv`, `etf_local_projections_summary.csv`, `etf_quantile_regression_summary.csv` |

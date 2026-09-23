@@ -1,32 +1,4 @@
-"""
-21_estimate_improved_model.py
-====================
-Improved Intra-ETF spillover model.
-
-Improvements over 20_estimate_baseline_model.py (the baseline):
-  C1 - Fixed lookahead bias: shock threshold is now event-specific,
-       using only the estimation-window residual std (Patell 1976).
-  C2 - XLE benchmark changed from ^GSPC to IXC (iShares Global Energy).
-  C3 - SPY excluded from the main analysis (self-benchmarking problem).
-  C4 - Lower-order main effects added (Illiq_j, Mispricing_k, etc.).
-  C5 - Two-way clustered SEs (event_id x stock_j).
-  C6 - Overlapping/contaminated events filtered.
-  C7 - Illiquidity: log-transformed, NaN-preserving (no 0.0 imputation).
-  D2 - Year-quarter time fixed effects added.
-
-Inputs:
-    processed/{etf}_holdings.csv   (from 01_load_holdings.py)
-    processed/returns_clean.csv    (from 11_compute_returns.py)
-    processed/benchmarks.csv       (from 06_download_benchmarks.py)
-    processed/gics_data.csv        (from 08_download_gics.py)
-    processed/amihud.csv           (from 10_download_volume.py)
-
-Outputs:
-    results/panel_improved.csv
-    results/regression_improved.txt
-    results/coef_plot_improved.png
-    results/shock_diagnostics.csv
-"""
+"""Estimate the expanded spillover model"""
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -42,10 +14,6 @@ from pathlib import Path
 from itertools import product
 from bisect import bisect_left, bisect_right
 
-# ================================================================================
-# CONFIGURATION
-# ================================================================================
-
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
 OUTPUT_DIR = BASE_DIR / "results"
@@ -53,35 +21,28 @@ FIG_DIR    = BASE_DIR / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True)
 FIG_DIR.mkdir(exist_ok=True)
 
-# -- Key change C3: SPY excluded from main analysis --
 ETF_LIST = ["XME", "XLE", "IHE", "XLV"]
 
-# -- Key change C2: XLE now uses IXC instead of ^GSPC --
 ETF_BENCHMARK = {
     "XME": "XLB",
-    "XLE": "IXC",         # Was ^GSPC - now iShares Global Energy ETF
+    "XLE": "IXC",
     "IHE": "XLV",
     "XLV": "^SP500-35",
 }
 
 ETF_BENCHMARK_CANDIDATES = {
     "XME": ["XLB", "^SP500-15", "^GSPC"],
-    "XLE": ["IXC", "^GSPC"],        # IXC first
+    "XLE": ["IXC", "^GSPC"],
     "IHE": ["XLV", "^SP500-35", "^GSPC"],
     "XLV": ["^SP500-35", "VHT", "^GSPC"],
 }
 
-# Market model parameters
-ESTIMATION_WINDOW = 120   # trading days for OLS estimation
-GAP               = 5     # days between estimation window end and event date
-EVENT_H           = 3     # CAR window: [t0, t0 + EVENT_H]
+ESTIMATION_WINDOW = 120
+GAP               = 5
+EVENT_H           = 3
 
-# -- Key change C1: event-specific threshold --
-# Shock flagged when |CAR| > SHOCK_THRESHOLD * sqrt(H+1) * sigma_epsilon
-# where sigma_epsilon is from the estimation window residuals.
 SHOCK_THRESHOLD = 1.5
 
-# Mechanism variable windows
 ILLIQ_WINDOW      = 20
 MISPRICING_WINDOW = 5
 CORR_WINDOW       = 60
@@ -92,10 +53,6 @@ REQUIRED_PANEL_COLUMNS = {
     "receiver_weight_term", "corr_term", "hhi_term",
 }
 
-# ================================================================================
-# STEP 0: LOAD DATA
-# ================================================================================
-
 print("\nLoading returns_clean.csv...")
 _peek      = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
 _idx_col   = _peek.columns[0]
@@ -104,7 +61,6 @@ returns    = pd.read_csv(PROC_DIR / "returns_clean.csv",
 returns.index = pd.to_datetime(returns.index)
 print(f"  Returns shape: {returns.shape}")
 
-# Load benchmark prices
 print("Loading benchmarks.csv...")
 _bpeak   = pd.read_csv(PROC_DIR / "benchmarks.csv", nrows=0)
 _bidx    = _bpeak.columns[0]
@@ -114,7 +70,6 @@ benchmarks_df.index = pd.to_datetime(benchmarks_df.index)
 bench_returns = np.log(benchmarks_df / benchmarks_df.shift(1)).iloc[1:]
 print(f"  Benchmark returns shape: {bench_returns.shape}")
 
-# Load GICS sector/industry classifications
 gics_path = PROC_DIR / "gics_data.csv"
 if gics_path.exists():
     gics_df = pd.read_csv(gics_path, index_col="ticker")
@@ -123,15 +78,13 @@ else:
     gics_df = pd.DataFrame(columns=["sector", "industry"])
     print("  [WARN] gics_data.csv not found.")
 
-# Load Amihud illiquidity
 amihud_path = PROC_DIR / "amihud.csv"
 if amihud_path.exists():
     _apeak   = pd.read_csv(amihud_path, nrows=0)
     _aidx    = _apeak.columns[0]
     amihud_df = pd.read_csv(amihud_path, index_col=_aidx, parse_dates=True)
     amihud_df.index = pd.to_datetime(amihud_df.index)
-    # -- Key change C7/D6: log-transform Amihud --
-    # Scale factor 1e10 brings values into a reasonable range before log
+
     amihud_log = np.log1p(amihud_df * 1e10)
     print(f"  Amihud data loaded and log-transformed: {amihud_df.shape}")
 else:
@@ -139,23 +92,18 @@ else:
     amihud_log = pd.DataFrame()
     print("  [WARN] amihud.csv not found.")
 
-
 def load_holdings(etf: str) -> pd.DataFrame:
     df = pd.read_csv(PROC_DIR / f"{etf.lower()}_holdings.csv",
                      parse_dates=["atDate"])
     return df
 
-
 def select_benchmark(etf: str) -> tuple:
-    """
-    Selects the benchmark for a given ETF.
-    Priority: ETF_BENCHMARK mapping -> bench_returns -> returns_clean fallback.
-    """
+    """Selects the benchmark for a given ETF"""
     ticker = ETF_BENCHMARK.get(etf)
     if ticker and ticker in bench_returns.columns:
         print(f"  Benchmark for {etf}: {ticker} (benchmarks.csv)")
         return ticker, bench_returns[ticker].dropna()
-    # Also check if IXC is in the main returns matrix
+
     if ticker and ticker in returns.columns:
         print(f"  Benchmark for {etf}: {ticker} (returns_clean.csv)")
         return ticker, returns[ticker].dropna()
@@ -169,24 +117,9 @@ def select_benchmark(etf: str) -> tuple:
             return cand, returns[cand].dropna()
     raise ValueError(f"No benchmark found for {etf}")
 
-
-# ================================================================================
-# STEP 1: SHOCK IDENTIFICATION (event-specific threshold, no lookahead)
-# ================================================================================
-
 def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
                                 ret_bench:  pd.Series) -> pd.DataFrame:
-    """
-    Identifies shock events using event-specific thresholds.
-
-    Key change from baseline: Instead of computing mean/std of CARs over the
-    entire sample (lookahead bias), each event's threshold is computed from
-    the estimation-window residual standard deviation:
-
-        threshold = SHOCK_THRESHOLD * sqrt(H+1) * sigma_epsilon(t0)
-
-    This follows Patell (1976) and standard event-study methodology.
-    """
+    """Identifies shock events using event-specific thresholds"""
     bench = ret_bench.reindex(ret_stocks.index).fillna(0).values
     dates = ret_stocks.index
     T     = len(dates)
@@ -219,13 +152,11 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
 
         y_full = ret_stocks[ticker].fillna(0).values
 
-        # Batch estimation windows
         idx_matrix = (est_starts[:, None] +
                       np.arange(ESTIMATION_WINDOW)[None, :])
         Y_batch = y_full[idx_matrix]
         X_batch = X_full[idx_matrix]
 
-        # Batch OLS via normal equations
         XtX = np.einsum('kij,kil->kjl', X_batch, X_batch)
         Xty = np.einsum('kij,ki->kj',   X_batch, Y_batch)
 
@@ -240,16 +171,12 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
         betas[safe]  = (XtX[safe, 0, 0] * Xty[safe, 1]
                         - XtX[safe, 1, 0] * Xty[safe, 0]) / det[safe]
 
-        # -- Key change C1: compute residual std per estimation window --
-        # Predicted Y in estimation window
         Y_pred = alphas[:, None] + betas[:, None] * X_batch[:, :, 1]
-        residuals = Y_batch - Y_pred                        # (n_valid, W)
-        sigma_eps = np.nanstd(residuals, axis=1, ddof=2)    # (n_valid,)
+        residuals = Y_batch - Y_pred
+        sigma_eps = np.nanstd(residuals, axis=1, ddof=2)
 
-        # Event-specific CAR threshold: SHOCK_THRESHOLD * sqrt(H+1) * sigma_eps
         car_threshold = SHOCK_THRESHOLD * np.sqrt(EVENT_H + 1) * sigma_eps
 
-        # Event window CARs
         ev_idx_matrix = (event_indices[:, None] +
                          np.arange(EVENT_H + 1)[None, :])
         ev_idx_matrix = np.clip(ev_idx_matrix, 0, T - 1)
@@ -262,7 +189,6 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
               - betas[:, None] * Rm_event)
         CARs = AR.sum(axis=1)
 
-        # Flag shocks using event-specific threshold
         for k in range(n_valid):
             if np.isnan(alphas[k]) or np.isnan(CARs[k]):
                 continue
@@ -282,17 +208,8 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
 
     return pd.DataFrame(records)
 
-
-# ================================================================================
-# STEP 2: MECHANISM VARIABLE UTILITIES
-# ================================================================================
-
 def illiquidity_proxy(ticker: str, t0: pd.Timestamp) -> float:
-    """
-    Returns log-transformed Amihud illiquidity for stock at t0-1.
-    Key change C7: Returns np.nan if missing (no 0.0 imputation).
-    Key change D6: Uses log(1 + 1e10 * ILLIQ) instead of raw Amihud.
-    """
+    """Returns log-transformed Amihud illiquidity for stock at t0-1"""
     if amihud_log.empty or ticker not in amihud_log.columns:
         return np.nan
     past = amihud_log.index[amihud_log.index < t0]
@@ -303,12 +220,8 @@ def illiquidity_proxy(ticker: str, t0: pd.Timestamp) -> float:
         return np.nan
     return float(val)
 
-
 def similarity(ticker_i: str, ticker_j: str) -> float:
-    """
-    GICS-based economic similarity between two stocks.
-    1.00 = same industry, 0.50 = same sector, 0.00 = different sector.
-    """
+    """GICS-based economic similarity between two stocks"""
     if gics_df.empty:
         return 1.0
 
@@ -333,20 +246,15 @@ def similarity(ticker_i: str, ticker_j: str) -> float:
         return 1.0
     return 0.5
 
-
 def mispricing_proxy(etf_ret: pd.Series,
                      bench_ret: pd.Series,
                      t0: pd.Timestamp) -> float:
-    """
-    ETF premium/discount proxy: cumulative ETF return minus benchmark
-    over a short pre-event window.
-    """
+    """ETF premium/discount proxy: cumulative ETF return minus benchmark"""
     past = etf_ret.index[etf_ret.index < t0]
     if len(past) < MISPRICING_WINDOW:
         return 0.0
     w = past[-MISPRICING_WINDOW:]
     return float(etf_ret.reindex(w).sum() - bench_ret.reindex(w).sum())
-
 
 def pre_event_corr(x: np.ndarray, y: np.ndarray) -> float:
     mask = np.isfinite(x) & np.isfinite(y)
@@ -358,17 +266,10 @@ def pre_event_corr(x: np.ndarray, y: np.ndarray) -> float:
         return np.nan
     return float(np.corrcoef(x, y)[0, 1])
 
-
-# ================================================================================
-# STEP 3: BUILD OBSERVATION PANEL
-# ================================================================================
-
 def compute_car_single(ret_stock: pd.Series,
                         ret_bench: pd.Series,
                         t0: pd.Timestamp) -> float:
-    """
-    Computes CAR for a single receiver stock at a single event date.
-    """
+    """Computes CAR for a single receiver stock at a single event date"""
     pre = ret_stock.index[ret_stock.index < t0]
     if len(pre) < ESTIMATION_WINDOW + GAP:
         return np.nan
@@ -401,19 +302,13 @@ def compute_car_single(ret_stock: pd.Series,
           - beta * ret_bench.reindex(w_dates).fillna(0).values)
     return float(ar.sum())
 
-
 def build_panel(shocks:      pd.DataFrame,
                 holdings_df: pd.DataFrame,
                 ret_stocks:  pd.DataFrame,
                 ret_bench:   pd.Series,
                 etf_ret:     pd.Series,
                 etf_symbol:  str) -> pd.DataFrame:
-    """
-    Builds the observation panel (j, e) for the spillover regression.
-
-    Key change C6: Filters out receiver stocks that have their own shock
-    within [t0 - EVENT_H, t0 + EVENT_H] to avoid contamination.
-    """
+    """Builds the observation panel (j, e) for the spillover regression"""
     rows = []
     hold_dates = sorted(pd.to_datetime(holdings_df["atDate"].unique()).tolist())
     n_shocks   = len(shocks)
@@ -422,7 +317,6 @@ def build_panel(shocks:      pd.DataFrame,
     illiq_cache = {}
     similarity_cache = {}
 
-    # Build a per-stock shock calendar for fast contamination checks.
     shock_lookup = {}
     for _, s in shocks.iterrows():
         stock = s["stock_i"]
@@ -465,10 +359,8 @@ def build_panel(shocks:      pd.DataFrame,
         weights_norm = weights / weights.sum()
         hhi_etf = float((weights_norm ** 2).sum())
 
-        # Mechanism variables at t0
         mispricing = mispricing_proxy(etf_ret, ret_bench, t0)
 
-        # -- D2: Year-quarter for time fixed effects --
         year_quarter = f"{t0.year}Q{(t0.month - 1) // 3 + 1}"
 
         corr_dates = ret_stocks.index[ret_stocks.index < t0]
@@ -477,7 +369,6 @@ def build_panel(shocks:      pd.DataFrame,
         ri_corr = (ret_corr[stock_i].to_numpy(dtype=float)
                    if stock_i in ret_corr.columns else np.array([]))
 
-        # Co-constituents j != i
         peers = hold_t[hold_t["symbol"] != stock_i]["symbol"].tolist()
 
         for stock_j in peers:
@@ -489,7 +380,6 @@ def build_panel(shocks:      pd.DataFrame,
             if np.isnan(w_j) or w_j <= 0:
                 continue
 
-            # -- C6: skip if receiver j has its own shock near t0 --
             if stock_j in shock_lookup:
                 j_shock_dates = shock_lookup[stock_j]
                 lo = t0 - pd.Timedelta(days=EVENT_H * 2)
@@ -524,7 +414,6 @@ def build_panel(shocks:      pd.DataFrame,
             else:
                 corr_ij = np.nan
 
-            # Interaction terms (use NaN-safe illiq for interactions)
             illiq_safe = illiq_j if not np.isnan(illiq_j) else np.nan
 
             rows.append({
@@ -544,7 +433,7 @@ def build_panel(shocks:      pd.DataFrame,
                 "Corr_ij_60d":   corr_ij,
                 "HHI_etf_t":     hhi_etf,
                 "Neg_e":         is_neg,
-                # Pre-computed interaction terms
+
                 "b1_term":              car_i * w_i,
                 "b2_term":              car_i * w_i * illiq_safe,
                 "b4_term":              car_i * w_i * mispricing,
@@ -557,19 +446,8 @@ def build_panel(shocks:      pd.DataFrame,
 
     return pd.DataFrame(rows)
 
-
-# ================================================================================
-# STEP 4: SPILLOVER REGRESSION
-# ================================================================================
-
 def run_regression(panel: pd.DataFrame) -> None:
-    """
-    Estimates the improved intra-ETF spillover regression.
-
-    The model absorbs receiver-stock and year-quarter fixed effects instead of
-    materializing them as dummy variables. This is more stable for the large
-    panel and allows one-way and two-way clustered standard errors.
-    """
+    """Estimates the improved intra-ETF spillover regression"""
     main_terms = ["b1_term", "b2_term", "b4_term", "b5_term",
                   "receiver_weight_term", "corr_term", "hhi_term",
                   "asym_term", "Illiq_j", "Mispricing_k", "Similarity_ij",
@@ -626,14 +504,13 @@ def run_regression(panel: pd.DataFrame) -> None:
             f.write("TWO-WAY CLUSTERED SE (event_id x stock_j)\n")
             f.write("=" * 70 + "\n")
             f.write(_twoway_summary_text(result_twoway, main_terms))
-    print(f"\nFull summary saved: {txt_path}")
 
     _plot_coefs(result_oneway, main_terms[:8])
     asymmetry_analysis(df)
 
 def _estimate_absorbed(df: pd.DataFrame, terms: list,
                        cluster_cols: list, cov_label: str) -> dict:
-    """Fits the model with absorbed stock and year-quarter fixed effects."""
+    """Fits the model with absorbed stock and year-quarter fixed effects"""
     y = df["AR_j"]
     x = df[terms]
     absorb = df[["stock_j", "year_quarter"]].astype("category")
@@ -656,9 +533,8 @@ def _estimate_absorbed(df: pd.DataFrame, terms: list,
         "cov_label": cov_label,
     }
 
-
 def _print_results(result, terms):
-    """Prints regression results for the main terms."""
+    """Prints regression results for the main terms"""
     valid_terms = [t for t in terms if t in result["params"].index]
     tbl = pd.DataFrame({
         "Coef.": result["params"].loc[valid_terms],
@@ -670,11 +546,9 @@ def _print_results(result, terms):
     print(f"\nN observations : {result['nobs']:.0f}")
     print(f"Adjusted R-sq  : {result['rsquared_adj']:.4f}")
 
-    _print_interpretation(result["params"], result["p"], terms)
-
 
 def _print_results_twoway(res_dict, terms):
-    """Prints two-way clustered results."""
+    """Prints two-way clustered results"""
     valid_terms = [t for t in terms if t in res_dict["params"].index]
     print(f"{'Term':<20s} {'Coef':>10s} {'SE':>10s} {'t':>8s} {'p':>8s}")
     print("-" * 60)
@@ -689,16 +563,14 @@ def _print_results_twoway(res_dict, terms):
     print(f"\nN observations : {res_dict['nobs']:.0f}")
     print(f"Adjusted R-sq  : {res_dict['rsquared_adj']:.4f}")
 
-
 def _absorbed_summary_text(res_dict, terms):
-    """Returns text summary for absorbed fixed-effects results."""
+    """Returns text summary for absorbed fixed-effects results"""
     lines = [f"Covariance: {res_dict.get('cov_label', 'clustered')}"]
     lines.append(_twoway_summary_text(res_dict, terms))
     return "\n".join(lines)
 
-
 def _twoway_summary_text(res_dict, terms):
-    """Returns text summary of clustered results."""
+    """Returns text summary of clustered results"""
     lines = []
     valid_terms = [t for t in terms if t in res_dict["params"].index]
     lines.append(f"{'Term':<20s} {'Coef':>10s} {'SE':>10s} "
@@ -717,38 +589,8 @@ def _twoway_summary_text(res_dict, terms):
     return "\n".join(lines)
 
 
-def _print_interpretation(coefs, pvals, terms):
-    """Prints coefficient interpretation."""
-    labels = {
-        "b1_term":       "Beta1  Baseline propagation      (Shock x w_i)",
-        "b2_term":       "Beta2  Liquidity channel          (Shock x w_i x Illiq_j)",
-        "b4_term":       "Beta4  Arbitrage channel          (Shock x w_i x Mispricing)",
-        "b5_term":       "Beta5  Informational spillover    (Shock x Similarity)",
-        "receiver_weight_term": "Beta6  Receiver weight channel   (Shock x w_i x w_j)",
-        "corr_term":     "Beta7  Return comovement channel  (Shock x w_i x Corr)",
-        "hhi_term":      "Beta8  ETF concentration channel  (Shock x w_i x HHI)",
-        "asym_term":     "Delta   Negative asymmetry         (Neg x Shock x w_i)",
-        "Illiq_j":       "Gamma1  Illiquidity main effect",
-        "Mispricing_k":  "Gamma2  Mispricing main effect",
-        "Similarity_ij": "Gamma3  Similarity main effect",
-        "w_j":           "Gamma4  Receiver weight main effect",
-        "Corr_ij_60d":   "Gamma5  Pre-event comovement main effect",
-        "HHI_etf_t":     "Gamma6  ETF concentration main effect",
-        "Neg_e":         "Gamma7  Negative shock main effect",
-    }
-    print("\n-- Interpretation --")
-    for term in terms:
-        if term not in coefs.index or term not in labels:
-            continue
-        stars = ("***" if pvals[term] < 0.01 else
-                 "**"  if pvals[term] < 0.05 else
-                 "*"   if pvals[term] < 0.10 else "  ")
-        print(f"  {labels[term]}: {coefs[term]:+.6f}  "
-              f"p={pvals[term]:.3f} {stars}")
-
-
 def _plot_coefs(result, terms):
-    """Saves a coefficient plot."""
+    """Saves a coefficient plot"""
     labels = {
         "b1_term":   "Beta1 Baseline",
         "b2_term":   "Beta2 Liquidity",
@@ -772,11 +614,9 @@ def _plot_coefs(result, terms):
     out = FIG_DIR / "coef_plot_improved.png"
     plt.savefig(out, dpi=150)
     plt.close()
-    print(f"Coefficient plot saved: {out}")
-
 
 def asymmetry_analysis(panel: pd.DataFrame) -> None:
-    """Estimates the model separately for positive and negative shocks."""
+    """Estimates the model separately for positive and negative shocks"""
     for sign, label in [(0, "POSITIVE"), (1, "NEGATIVE")]:
         sub = panel[panel["Neg_e"] == sign].dropna(
             subset=["AR_j", "b1_term", "b2_term", "b4_term", "b5_term",
@@ -810,11 +650,6 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
         valid_terms = [t for t in terms if t in tbl.index]
         print(tbl.loc[valid_terms, available_cols])
 
-
-# ================================================================================
-# MAIN
-# ================================================================================
-
 if __name__ == "__main__":
 
     panel_path = OUTPUT_DIR / "panel_improved.csv"
@@ -847,7 +682,6 @@ if __name__ == "__main__":
         etf_ret = (returns[etf].dropna()
                    if etf in returns.columns else ret_bench)
 
-        # Constituent stocks with available returns
         etf_stocks   = hold_df["symbol"].unique().tolist()
         avail_stocks = [t for t in etf_stocks if t in returns.columns
                         and t != bench_sym]
@@ -860,7 +694,6 @@ if __name__ == "__main__":
             print(f"  [WARN] Too few stocks. Skipping {etf}.")
             continue
 
-        # Identify shocks (event-specific threshold)
         print(f"\n  Identifying shocks "
               f"(threshold={SHOCK_THRESHOLD}sigma, event-specific)...")
         shocks = identify_shocks_vectorized(ret_stocks, ret_bench)
@@ -870,7 +703,6 @@ if __name__ == "__main__":
             print(f"  [WARN] No shocks found.")
             continue
 
-        # Save shock diagnostics
         shocks["etf"] = etf
         all_shock_diagnostics.append(shocks)
 
@@ -878,7 +710,6 @@ if __name__ == "__main__":
         n_pos = len(shocks) - n_neg
         print(f"  Positive shocks: {n_pos:,}  |  Negative shocks: {n_neg:,}")
 
-        # Build panel
         print(f"\n  Building observation panel (j, e)...")
         panel = build_panel(shocks, hold_df, ret_stocks,
                             ret_bench, etf_ret, etf)
@@ -893,20 +724,15 @@ if __name__ == "__main__":
         full_panel = pd.concat(panels_all, ignore_index=True)
         print(f"\nFull panel: {len(full_panel):,} observations")
 
-        # Save panel
         full_panel.to_csv(panel_path, index=False)
-        print(f"Panel saved: {panel_path}")
 
-        # Save shock diagnostics
         if all_shock_diagnostics:
             diag = pd.concat(all_shock_diagnostics, ignore_index=True)
             diag_path = OUTPUT_DIR / "shock_diagnostics.csv"
             diag.to_csv(diag_path, index=False)
-            print(f"Shock diagnostics saved: {diag_path}")
             print(f"  Mean sigma_eps   : {diag['sigma_eps'].mean():.6f}")
             print(f"  Mean threshold   : {diag['car_threshold'].mean():.6f}")
             print(f"  Mean |CAR|       : {diag['car_i'].abs().mean():.6f}")
 
-        # Run regression
         run_regression(full_panel)
 

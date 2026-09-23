@@ -1,13 +1,4 @@
-"""
-==============================
-Generates key visualizations and data quality reports for the 
-"Data Descriptive Analysis" section of the Master's Thesis. 
-
-Outputs:
-    1. Calendar Analysis: Reads RAW JSON files directly to verify data completeness.
-    2. Outliers Table: CSV with top concentrated holdings per ETF.
-    3. Visualizations: Weight distribution, Returns, and Amihud Liquidity.
-"""
+"""Inspect raw JSON holdings"""
 
 import os
 import json
@@ -17,7 +8,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-# --- CONFIGURATION ------------------------------------------------------------
 BASE_DIR = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR = BASE_DIR / "processed"
 FIG_DIR  = BASE_DIR / "figures"
@@ -25,7 +15,6 @@ FIG_DIR.mkdir(exist_ok=True)
 
 ETF_LIST = ["SPY", "XME", "XLE", "IHE", "XLV"]
 
-# Map ETFs to their respective raw JSON folders
 ETF_FOLDERS = {
     "SPY": "spy_holdings",
     "XME": "xme_holdings",
@@ -39,12 +28,10 @@ sns.set_context("paper", font_scale=1.2)
 
 print("Starting Exploratory Data Analysis (EDA) & Quality Report...\n")
 
-# --- 1. DATA QUALITY & CALENDAR ANALYSIS (DIRECT JSON READ) -------------------
 print("="*80)
 print("1. CALENDAR & MISSING DATA ANALYSIS (READING RAW JSONs)")
 print("="*80)
 
-# Load returns to get the definitive trading calendar
 returns = pd.read_csv(PROC_DIR / "returns_clean.csv", index_col="date", parse_dates=True)
 trading_days = returns.index
 
@@ -53,23 +40,22 @@ calendar_results = []
 for etf in ETF_LIST:
     folder_path = BASE_DIR / ETF_FOLDERS[etf]
     json_files = list(folder_path.glob("*.json"))
-    
+
     valid_dates_list = []
     empty_or_bad_files = 0
-    
+
     print(f"Scanning {len(json_files)} raw JSON files for {etf}...", end=" ")
-    
-    # Read every physical JSON file
+
     for fpath in json_files:
         try:
-            # Parse the date directly from the filename (e.g., 20150102.json)
+
             date_str = fpath.stem
             date_obj = pd.to_datetime(date_str, format="%Y%m%d")
-            
+
             with open(fpath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 holdings = data.get("holdings", [])
-                
+
                 if len(holdings) > 0:
                     valid_dates_list.append(date_obj)
                 else:
@@ -78,56 +64,49 @@ for etf in ETF_LIST:
             empty_or_bad_files += 1
 
     print("Done.")
-    
-    # Create an index of dates where we physically have valid JSON data
+
     etf_dates = pd.DatetimeIndex(valid_dates_list).sort_values()
-    
+
     if len(etf_dates) == 0:
         print(f"  -> ERROR: No valid JSON data found for {etf} in {folder_path}")
         continue
-        
+
     start_date = etf_dates.min()
     end_date = etf_dates.max()
     all_days = pd.date_range(start=start_date, end=end_date, freq='D')
-    
-    # 1. Basic missing days calculation (Total timeframe days minus days with valid JSONs)
+
     missing_days = all_days.difference(etf_dates)
     missing_weekends = missing_days[missing_days.dayofweek >= 5]
     missing_trading = missing_days.intersection(trading_days)
-    
+
     total = len(all_days)
     n_missing = len(missing_days)
-    
-    # 2. LOCF Simulation (Impact of 2-day forward fill)
+
     trading_days_etf = trading_days[(trading_days >= start_date) & (trading_days <= end_date)]
-    
+
     presence = pd.Series(index=trading_days_etf, data=np.nan)
     valid_trading_dates = etf_dates.intersection(trading_days_etf)
     presence.loc[valid_trading_dates] = 1
-    
-    # Apply the exact same ffill(limit=2) used in compute_returns.py
+
     presence_filled = presence.ffill(limit=2)
-    
-    # Count how many trading days are STILL missing after LOCF
+
     unresolved_anomalies = presence_filled.isna().sum()
-    
-    # Calculate percentages relative to the total missing days
+
     pct_weekends = (len(missing_weekends) / n_missing) * 100 if n_missing > 0 else 0
     pct_trading  = (len(missing_trading) / n_missing) * 100 if n_missing > 0 else 0
     pct_holidays = 100 - pct_weekends - pct_trading if n_missing > 0 else 0
     pct_unresolved = (unresolved_anomalies / n_missing) * 100 if n_missing > 0 else 0
-    
+
     print(f"[{etf}] Timeframe: {start_date.date()} to {end_date.date()} ({total} days)")
     print(f"  -> Empty or unreadable JSON files found: {empty_or_bad_files}")
     print(f"  -> Total days without valid JSON data : {n_missing} ({(n_missing/total)*100:.1f}% of total time)")
-    
+
     if n_missing > 0:
         print(f"     - % OF MISSING (Weekend)         : {pct_weekends:.1f}%")
         print(f"     - % OF MISSING (Market Holiday)  : {pct_holidays:.1f}%")
         print(f"     - % OF MISSING (Anomalies)       : {pct_trading:.1f}% ({len(missing_trading)} days)")
         print(f"     - UNRESOLVED AFTER 2-DAY LOCF    : {pct_unresolved:.1f}% ({unresolved_anomalies} days)")
 
-    # Save data for the CSV
     calendar_results.append({
         "ETF": etf,
         "Total Days": total,
@@ -138,13 +117,10 @@ for etf in ETF_LIST:
         "Unresolved anomalies after 2-day LOCF": f"{pct_unresolved:.1f}% ({unresolved_anomalies} days)"
     })
 
-# Save the calendar analysis to CSV
 df_calendar = pd.DataFrame(calendar_results)
 calendar_path = PROC_DIR / "calendar_analysis_jsons.csv"
 df_calendar.to_csv(calendar_path, index=False)
-print(f"\n[OK] Calendar Analysis table saved to: {calendar_path}")
 
-# --- 2. OUTLIERS TABLE (CONCENTRATION) ----------------------------------------
 print("\n" + "="*80)
 print("2. OUTLIERS / TOP HOLDINGS EXTRACTION")
 print("="*80)
@@ -158,7 +134,7 @@ for etf in ETF_LIST:
     df_latest = df[df["atDate"] == latest_date].copy()
     df_latest["ETF"] = etf
     latest_holdings.append(df_latest)
-    
+
     outliers = df_latest[df_latest["percent"] > 5.0].sort_values("percent", ascending=False)
     if not outliers.empty:
         outliers_list.append(outliers[["ETF", "symbol", "name", "percent"]])
@@ -167,10 +143,7 @@ if outliers_list:
     df_outliers = pd.concat(outliers_list)
     outliers_path = PROC_DIR / "etf_outliers_jsons.csv"
     df_outliers.to_csv(outliers_path, index=False)
-    print(f"[OK] Outliers table saved to: {outliers_path}")
 
-
-# --- 3. WEIGHT DISTRIBUTION PLOT ----------------------------------------------
 print("\nGenerating 'Weight Distribution' plot...")
 df_weights = pd.concat(latest_holdings)
 
@@ -184,8 +157,6 @@ plt.tight_layout()
 plt.savefig(FIG_DIR / "2_weight_distribution.png", dpi=300)
 plt.close()
 
-
-# --- 4. RETURN DISTRIBUTION (SHOCK ILLUSTRATION) ------------------------------
 print("Generating 'Returns Distribution & Outliers' plot...")
 flat_returns = returns.values.flatten()
 flat_returns = flat_returns[~np.isnan(flat_returns)]
@@ -209,15 +180,13 @@ plt.tight_layout()
 plt.savefig(FIG_DIR / "3_returns_distribution.png", dpi=300)
 plt.close()
 
-
-# --- 5. LIQUIDITY CHANNEL (AMIHUD) --------------------------------------------
 print("Generating 'Market Illiquidity (Amihud)' plot...")
 amihud = pd.read_csv(PROC_DIR / "amihud.csv", index_col="date", parse_dates=True)
 market_illiquidity = amihud.mean(axis=1)
 
 plt.figure(figsize=(12, 5))
 plt.plot(market_illiquidity.index, market_illiquidity.values, color="purple", linewidth=1.5)
-plt.axvspan(pd.to_datetime("2020-02-15"), pd.to_datetime("2020-04-15"), 
+plt.axvspan(pd.to_datetime("2020-02-15"), pd.to_datetime("2020-04-15"),
             color="red", alpha=0.2, label="COVID-19 Market Crash")
 
 plt.title("Average Market Illiquidity (Amihud Ratio 20-day rolling mean)")
@@ -228,6 +197,4 @@ plt.yscale("log")
 plt.tight_layout()
 plt.savefig(FIG_DIR / "4_amihud_liquidity.png", dpi=300)
 plt.close()
-
-print("\nScript completed successfully!")
 

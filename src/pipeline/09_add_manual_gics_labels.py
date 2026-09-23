@@ -4,7 +4,6 @@ from pathlib import Path
 PROC_DIR = (Path(__file__).resolve().parents[2] / "holdings" / "processed")
 gics = pd.read_csv(PROC_DIR / "gics_data.csv", index_col="ticker")
 
-# Manual assignments for renamed tickers still in holdings
 manual = {
     "BHGE": {"sector": "Energy",        "industry": "Oil & Gas Equipment & Services"},
     "WLTW": {"sector": "Financial Services", "industry": "Insurance Brokers"},
@@ -20,5 +19,4 @@ for ticker, vals in manual.items():
         gics.loc[ticker, "industry"] = vals["industry"]
 
 gics.to_csv(PROC_DIR / "gics_data.csv")
-print("Manual assignments saved.")
 print(f"Remaining NaN sectors: {gics['sector'].isna().sum()}")
