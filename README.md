@@ -16,44 +16,31 @@ src/
 
 ## Main Workflow
 
-Run scripts from the repository root.
+Run the full main workflow from the repository root:
 
 ```powershell
-python src/pipeline/00_validate_holdings.py
-python src/pipeline/00_validate_duplicate_holdings.py
-python src/pipeline/01_load_holdings.py
-python src/utils/extract_company_universe.py
-python src/utils/deduplicate_company_universe.py
-python src/pipeline/02_download_prices.py
-python src/pipeline/03_check_missing_downloads.py
-python src/pipeline/04_retry_missing_tickers.py
-python src/pipeline/05_apply_ticker_mappings.py
-python src/pipeline/06_download_benchmarks.py
-python src/pipeline/07_download_energy_benchmark.py
-python src/pipeline/08_download_gics.py
-python src/pipeline/09_add_manual_gics_labels.py
-python src/pipeline/10_download_volume.py
-python src/pipeline/11_compute_returns.py
-python src/models/20_estimate_baseline_model.py
-python src/models/21_estimate_improved_model.py
-python src/models/22_run_robustness_checks.py
-python src/models/23_run_ml_baselines.py
-python src/models/24_run_benchmark_robustness.py
-python src/models/25_run_local_projections.py
-python src/models/26_run_factor_robustness.py
-python src/models/27_run_etf_interactions.py
-python src/models/28_run_quantile_regression.py
-python src/models/29_compile_etf_results.py
-python src/models/30_run_specification_comparison.py
+python run_all.py
 ```
 
-Exploratory scripts:
+This runs the data pipeline and the model scripts in order. It checks the main Python dependencies first and stops if any script fails.
+
+Install dependencies with:
 
 ```powershell
-python src/analysis/40_exploratory_analysis.py
-python src/analysis/41_raw_json_analysis.py
-python src/analysis/42_integrity_checks.py
+python -m pip install -r requirements.txt
 ```
+
+Useful options:
+
+```powershell
+python run_all.py --dry-run
+python run_all.py --stage pipeline
+python run_all.py --stage models
+python run_all.py --include-analysis
+python run_all.py --skip-dependency-check
+```
+
+Exploratory analysis scripts are not included by default. Use `--include-analysis` if you also want to run them.
 
 ## Main Model
 
