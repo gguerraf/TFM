@@ -3,6 +3,7 @@
 import warnings
 warnings.filterwarnings("ignore")
 
+import random
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -119,7 +120,10 @@ def run_lightgbm(X_train, y_train, X_val, y_val, X_test, y_test,
         "reg_lambda": 1.0,
         "verbose": -1,
         "n_jobs": -1,
-        "seed": 42,
+        "seed": 24,
+        "feature_fraction_seed": 24,
+        "bagging_seed": 24,
+        "data_random_seed": 24,
     }
 
     train_data = lgb.Dataset(X_train, label=y_train,
@@ -189,6 +193,14 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
         log_lines.append("\nNEURAL NETWORK: Skipped (PyTorch not installed)")
         return None, None
 
+    random.seed(24)
+    np.random.seed(24)
+    torch.manual_seed(24)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(24)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     print("\n" + "=" * 60)
     print("NEURAL NETWORK (tanh activation)")
     print("=" * 60)
@@ -201,7 +213,7 @@ def run_neural_network(X_train, y_train, X_val, y_val, X_test, y_test,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"  Device: {device}")
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(24)
     if len(X_tr) > NN_MAX_TRAIN_OBS:
         sample_idx = rng.choice(len(X_tr), size=NN_MAX_TRAIN_OBS, replace=False)
         X_fit = X_tr[sample_idx]

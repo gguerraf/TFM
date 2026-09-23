@@ -107,10 +107,10 @@ ML comparison before and after the expanded variables:
 | Previous improved | LightGBM | 0.0163 | 0.0220 | 0.5407 |
 | Previous improved | Tanh neural network | 0.0146 | 0.0220 | 0.5377 |
 | Expanded | OLS baseline | 0.0004 | 0.0221 | 0.5274 |
-| Expanded | LightGBM | -0.0122 | 0.0222 | 0.5449 |
-| Expanded | Tanh neural network | 0.0146 | 0.0220 | 0.5473 |
+| Expanded, seed 24 | LightGBM | -0.0159 | 0.0222 | 0.5444 |
+| Expanded, seed 24 | Tanh neural network | 0.0171 | 0.0220 | 0.5395 |
 
-The expanded feature set does not improve predictive R2 for LightGBM. However, LightGBM feature importance shows that the new variables are used by the model, especially `corr_term`, `w_j`, `HHI_etf_t` and `Corr_ij_60d`. This suggests that the variables contain signal, but the signal is not stable enough to improve out-of-sample R2 in the current temporal split.
+The expanded feature set does not improve predictive R2 for LightGBM. With seed 24, the tanh neural network gives the best test R2 among the predictive baselines, while LightGBM keeps higher directional accuracy than OLS. This supports the thesis interpretation that nonlinear ML can capture some weak signal, but not enough to replace the econometric specification as the main model.
 
 ## Open Interpretation Risk: Benchmark Absorption
 
@@ -144,3 +144,35 @@ The quantile diagnostic shows that `b1_term` is negative across the distribution
 A graph neural network is still not strongly justified as a core thesis model. The econometric model now already includes graph-like information through pre-event return correlation and economic similarity. The latest ML results do not show a large predictive gain that would justify the extra complexity of a GNN.
 
 A GNN could be mentioned as a future extension if the thesis explicitly shifts toward network learning. A graph could connect stocks by ETF co-membership, holding-weight overlap, GICS similarity, return correlation or lead-lag relationships. For the current thesis scope, the priority should be to finalize the econometric specification and write a clear interpretation of the robust channels.
+
+## Sequential Specification Comparison
+
+The sequential specification comparison was executed with `src/models/30_run_specification_comparison.py`. This is an econometric specification table rather than a machine-learning ablation exercise. Its purpose is to show how the main coefficient and model fit change as theoretically motivated channels are added or removed.
+
+The script estimates eleven specifications using the same absorbed fixed-effects framework and two-way clustered standard errors by event and receiver stock. It records included variables, number of observations, number of events, number of receivers, adjusted R2, main-channel coefficients, standard errors, p-values, number of significant channels, runtime and clustering status.
+
+| Specification | Adj. R2 | b1 term | b1 p-value | Significant channels | Runtime sec. | Interpretation |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Core b1 | 0.0198 | 0.6041 | <0.001 | 1 | 8.61 | The direct weighted shock is positive when estimated alone, which means the simple bivariate channel is not enough to describe spillover structure. |
+| Core + liquidity | 0.0209 | 0.1936 | 0.0631 | 1 | 8.02 | Adding liquidity absorbs part of the direct effect and makes b1 only marginally significant. |
+| Core + liquidity + similarity | 0.0252 | -0.1985 | 0.0961 | 2 | 8.39 | Adding economic similarity changes the sign of b1, suggesting that relatedness among firms matters for identifying the direct channel. |
+| Previous improved | 0.0309 | -0.4688 | 0.0013 | 3 | 11.72 | This reproduces the pre-expanded model and is the natural benchmark for the new variables. |
+| Full expanded | 0.0355 | -1.2020 | <0.001 | 6 | 14.53 | The complete model has the best explanatory power and the largest number of significant channels. |
+| Full without receiver weight | 0.0352 | -0.9280 | <0.001 | 5 | 13.49 | Receiver weight contributes to the full model but is not the main driver of b1 significance. |
+| Full without correlation | 0.0323 | -0.4058 | 0.1070 | 4 | 13.38 | Removing the comovement channel makes b1 statistically insignificant, showing that correlation is central to the expanded specification. |
+| Full without HHI | 0.0351 | -1.6396 | <0.001 | 4 | 13.60 | Concentration affects the scale of b1; without HHI, the direct channel becomes more negative. |
+| Full without new variables | 0.0309 | -0.4688 | 0.0013 | 3 | 11.70 | This exactly reproduces the previous improved specification. |
+| Full without main controls | 0.0305 | -0.7979 | <0.001 | 5 | 10.20 | Interactions alone still explain meaningful variation, but controls improve the full specification. |
+| Full without asymmetry | 0.0345 | -0.8772 | <0.001 | 5 | 13.33 | The model remains stable without the negative-shock asymmetry block. |
+
+The table gives three important conclusions.
+
+First, the sign of `b1_term` depends strongly on the conditioning set. In the simplest model, `b1_term` is positive and significant. After adding liquidity and similarity, it becomes smaller and then negative. This means the direct channel cannot be interpreted in isolation. It is partly confounded with liquidity conditions and firm relatedness when the model is too small.
+
+Second, the expanded variables improve the model in a meaningful but still realistic way. Adjusted R2 rises from 0.0309 in the previous improved specification to 0.0355 in the full expanded specification. This is not a large predictive jump, but for daily abnormal returns it is a relevant improvement. More importantly, the number of significant main channels rises from 3 to 6, which gives a richer and more interpretable transmission structure.
+
+Third, the pre-event comovement channel is the key new variable. When `corr_term` and `Corr_ij_60d` are removed, `b1_term` becomes `-0.4058` and is no longer statistically significant at conventional levels. This is the strongest evidence that return comovement is not just an additional control. It changes the interpretation of the direct spillover coefficient and helps explain why the full model differs from the previous improved model.
+
+The receiver-weight and concentration checks are also useful. Removing receiver weight keeps `b1_term` negative and significant, so receiver weight contributes to the model but is not the main source of the direct effect. Removing HHI makes `b1_term` more negative, which suggests that ETF concentration affects the scale of the direct channel. Removing asymmetry leaves the model stable, which confirms that negative-shock asymmetry is not central in the current specification.
+
+For the thesis, this comparison should be described as a sequential specification comparison. The main narrative is that the full expanded model is preferred because it improves fit, increases the number of significant theoretically motivated channels and reveals that pre-event comovement is central to intra-ETF transmission.

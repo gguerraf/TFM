@@ -147,7 +147,7 @@ The analytical pipeline follows an end-to-end reproducible workflow:
           │
 [20_estimate_baseline_model.py]   ──> Vectorized shock detection, panel construction, OLS regression
           │
-[30_exploratory_analysis.py] ──> Summary tables, concentration outliers, thesis plots
+[40_exploratory_analysis.py] ──> Summary tables, concentration outliers, thesis plots
 ```
 
 ---
@@ -157,7 +157,7 @@ The analytical pipeline follows an end-to-end reproducible workflow:
 - **Data Pipeline Complete:** Raw holdings across 5 ETFs have been ingested, price histories downloaded, clean returns built, GICS classifications compiled and Amihud ratios computed.
 - **Econometric Model Executed:** The improved specification now includes event-specific dynamic thresholds, external energy benchmark `IXC`, receiver and year-quarter fixed effects, two-way clustered standard errors via absorbed fixed effects, overlapping event controls, receiver weight, return comovement and ETF concentration.
 - **Robustness Executed:** Robustness checks include sign splits, pre/post-COVID splits, per-ETF regressions, top-weight exclusion, trimming, placebo event assignment, randomized receiver membership, shuffled outcomes and no year-quarter fixed effects.
-- **ML/NN Executed:** The project includes OLS, LightGBM and a supervisor-aligned tanh neural network baseline. The latest ML evidence does not strongly justify a GNN as a core thesis model.
+- **ML/NN Executed:** The project includes OLS, LightGBM and a supervisor-aligned tanh neural network baseline. With seed 24, the tanh NN reaches test R2 0.0171 and directional accuracy 0.5395. The latest ML evidence does not strongly justify a GNN as a core thesis model.
 
 ---
 

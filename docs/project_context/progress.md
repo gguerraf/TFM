@@ -80,10 +80,10 @@ The script compares:
 
 The neural network follows the supervisor's suggestion: the activation function is fixed to `tanh`, and the modest grid varies mainly the number of hidden layers and the number of nodes per layer. Learning rate, dropout and batch size are fixed to keep the grid small and interpretable.
 
-Current best neural network configuration:
+Current best neural network configuration after the reproducible seed-24 run:
 
 - Hidden layers: 3
-- Nodes per layer: 16
+- Nodes per layer: 32
 - Activation: `tanh`
 - Learning rate: 0.01
 - Dropout: 0.0
@@ -151,8 +151,8 @@ ML results:
 | Model | Test R2 | Test MAE | Directional accuracy |
 | --- | ---: | ---: | ---: |
 | OLS baseline | 0.0004 | 0.0221 | 0.5274 |
-| LightGBM | -0.0122 | 0.0222 | 0.5449 |
-| Tanh neural network | 0.0146 | 0.0220 | 0.5473 |
+| LightGBM, seed 24 | -0.0159 | 0.0222 | 0.5444 |
+| Tanh neural network, seed 24 | 0.0171 | 0.0220 | 0.5395 |
 
 ## Effect of the New Variables
 
@@ -162,7 +162,7 @@ The most important new result is `corr_term`: pre-event return comovement is pos
 
 The receiver-weight channel is also positive and significant, which means that the reaction is stronger when the receiving stock has a larger position in the ETF. The concentration channel is significant with a negative sign, suggesting that ETF structure matters, but its interpretation should be more cautious.
 
-The predictive results are more mixed. The expanded features do not improve LightGBM's out-of-sample R2, although directional accuracy remains higher than OLS. The neural network remains similar in R2 and improves slightly in directional accuracy. This means the new variables are valuable for econometric interpretation, but not enough to justify a GNN as a core model.
+The predictive results remain mixed. The expanded features do not improve LightGBM's out-of-sample R2, although directional accuracy remains higher than OLS. With seed 24, the tanh neural network reaches test R2 0.0171 and directional accuracy 0.5395. This means the new variables and NN architecture are useful as supporting predictive evidence, but not enough to justify a GNN as a core model.
 
 
 ## Extension Results Added on 2026-09-23
@@ -179,7 +179,7 @@ Main interpretation updates:
 
 ## Current Remaining Work
 
-At this point, the expanded model with w_j, Corr_ij_60d and HHI_etf_t has been implemented, executed, documented and pushed in commit d5049a8 with message dding new variables to the models. After that commit, the benchmark and model extensions were implemented and executed locally: LOO/LTO benchmark robustness, Local Projections, FF5+momentum robustness, pooled ETF interactions and quantile diagnostics.
+At this point, the expanded model with w_j, Corr_ij_60d and HHI_etf_t has been implemented, executed, documented and pushed in commit d5049a8 with message adding new variables to the models. After that commit, the benchmark and model extensions were implemented and executed locally: LOO/LTO benchmark robustness, Local Projections, FF5+momentum robustness, pooled ETF interactions and quantile diagnostics.
 
 A new ETF-level interpretation document has also been added at docs/project_context/etf_model_results_interpretation.md. This document should be the main source for writing the thesis results section because it separates the evidence by ETF and by model family. It keeps the previous expanded-model interpretation intact, so the thesis can explain what changed after adding the new variables and after adding the benchmark/factor robustness checks.
 
@@ -188,7 +188,7 @@ The current short-term work is no longer to implement the main extensions. The s
 1. Review the new scripts manually before committing them.
 2. Review the new ETF-level interpretation document and decide which results will enter the thesis narrative.
 3. Decide how to present the benchmark comparison: external benchmark as the main specification, with LOO/LTO as robustness, or both side by side.
-4. Decide how to present the factor robustness result, because FF5+momentum changes the direct 1_term but leaves corr_term strong.
+4. Decide how to present the factor robustness result, because FF5+momentum changes the direct `b1_term` but leaves corr_term strong.
 5. Keep generated data, holdings, local results and local machine-specific files out of GitHub.
 6. Run a privacy scan before any future commit or push.
 
@@ -199,3 +199,12 @@ Lower-priority extensions remain possible but are not necessary for the next com
 - ETF flow or creation/redemption proxies can be added if shares outstanding data can be obtained reliably.
 - Market-state or volatility-regime interactions may be useful later.
 - A GNN should remain future work only, because the current econometric model already includes graph-like variables and the ML evidence does not justify the extra complexity as a core thesis model.
+A reproducibility update has also been made to the neural network baseline: Python random, NumPy and PyTorch seeds are fixed at 24, and deterministic CuDNN settings are enabled when CUDA is available. The ML baseline has been re-run with this setup. The new `src/models/30_run_specification_comparison.py` script has also been executed and writes `model_specification_comparison.csv` plus details under `holdings/results/`.
+
+## Sequential Specification Comparison Results
+
+The sequential specification comparison has now been executed. The full expanded model improves adjusted R2 from 0.0309 to 0.0355 relative to the previous improved specification and increases the number of significant main channels from 3 to 6.
+
+The most important result is the role of pre-event comovement. Removing `corr_term` and `Corr_ij_60d` makes `b1_term` statistically insignificant (`b1 = -0.4058`, p=0.1070). This indicates that the correlation channel is central to the expanded model and should be emphasized in the thesis as one of the strongest transmission mechanisms.
+
+The comparison also shows that removing all three new variables exactly reproduces the previous improved specification. This confirms that the script is internally consistent and that the change from `b1 = -0.4688` to `b1 = -1.2020` is driven by the expanded variables rather than by a change in sample construction.

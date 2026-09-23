@@ -237,17 +237,11 @@ To establish the validity of the empirical results against model assumptions, th
     - Tests whether the current external benchmarks mechanically absorb part of the shock or receiver movement.
     - Gives a clean diagnostic before moving to more complex models.
 
-## 10. Planned Model Extensions After Benchmark Robustness
+## 10. Implemented Model Extensions
 
-The agreed order for future work is:
+The benchmark and model extensions have been implemented. They include LOO/LTO benchmark robustness, Local Projections, Fama-French / Carhart factor robustness, pooled ETF-specific interactions, quantile regression and sequential specification comparison.
 
-1. Leave-one-out / leave-two-out benchmark robustness.
-2. Local Projections following Jorda (2005), with horizons h=0,...,10, to study dynamic transmission.
-3. Fama-French / Carhart factor robustness, to check dependence on the expected-return model.
-4. Pooled ETF-specific interaction tests, to formally test heterogeneity across funds.
-5. Quantile regression as a secondary extension for tail spillovers.
-
-Matched-control / DiD designs, Double/Debiased ML and GNNs are not the immediate priority. They may be useful later, but they do not solve the main open issue: whether abnormal returns are sensitive to benchmark construction.
+Matched-control / DiD designs, Double/Debiased ML and GNNs remain lower-priority future extensions.
 
 
 ## 11. Implemented Extensions and How to Interpret Them
@@ -263,3 +257,25 @@ The factor-robustness script uses Fama-French 5 factors plus momentum. This chec
 The pooled ETF-interaction script formally tests whether channels differ by ETF, instead of relying only on separate ETF regressions.
 
 The quantile-regression script is a secondary diagnostic. It uses ETF and year-quarter controls, but not the full receiver fixed effects, so it should be interpreted as descriptive evidence about tails rather than as the main causal/econometric result.
+
+## 12. Sequential Specification Comparison
+
+The project now includes `src/models/30_run_specification_comparison.py`, which implements a sequential specification comparison. This is the econometric equivalent of testing model stability across nested or partially nested specifications.
+
+The script compares eleven specifications:
+
+1. Core direct transmission only.
+2. Core plus liquidity.
+3. Core plus liquidity and similarity.
+4. Previous improved specification.
+5. Full expanded specification.
+6. Full model without receiver weight.
+7. Full model without pre-event correlation.
+8. Full model without ETF concentration.
+9. Full model without all three new variables.
+10. Full model without lower-order controls.
+11. Full model without asymmetry.
+
+Each specification is estimated with absorbed receiver and year-quarter fixed effects and two-way clustered standard errors by event and receiver stock. The output records model fit, main-channel coefficients, significance, runtime and clustering status.
+
+The purpose is not to select variables mechanically by p-value. The purpose is to test whether the thesis narrative is stable when theoretically motivated channels are added or removed. The most important diagnostic is the behavior of `b1_term`, because this coefficient is central to the interpretation of direct intra-ETF transmission.

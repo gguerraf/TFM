@@ -169,3 +169,4 @@ The methodological extensions are implemented as separate scripts instead of bei
 | `27_run_etf_interactions.py` | Pooled ETF heterogeneity tests | `etf_interactions_summary.csv`, `etf_interactions_details.txt` |
 | `28_run_quantile_regression.py` | Secondary tail diagnostic | `quantile_regression_summary.csv`, `quantile_regression_details.txt` |
 | `29_compile_etf_results.py` | ETF-level summaries for thesis interpretation | `etf_baseline_summary.csv`, `etf_benchmark_robustness_summary.csv`, `etf_factor_robustness_summary.csv`, `etf_local_projections_summary.csv`, `etf_quantile_regression_summary.csv` |
+| `30_run_specification_comparison.py` | Sequential specification comparison | `model_specification_comparison.csv`, `model_specification_comparison_details.txt` |

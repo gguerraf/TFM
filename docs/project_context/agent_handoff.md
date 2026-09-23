@@ -39,9 +39,9 @@ Models:
 
 Analysis:
 
-1. `src/analysis/30_exploratory_analysis.py`
-2. `src/analysis/31_raw_json_analysis.py`
-3. `src/analysis/32_integrity_checks.py`
+1. `src/analysis/40_exploratory_analysis.py`
+2. `src/analysis/41_raw_json_analysis.py`
+3. `src/analysis/42_integrity_checks.py`
 
 ## Important Data Policy
 
@@ -96,13 +96,13 @@ The corrected placebo is `R16_Placebo_event_assignment`. It randomly reassigns e
 - Fixed dropout: 0.0.
 - Fixed batch size: 2048.
 
-Current best NN: 3 hidden layers and 16 nodes per layer.
+Current best NN after the reproducible seed-24 run: 3 hidden layers and 32 nodes per layer.
 
 Latest ML results after adding the new variables:
 
 - OLS test R2 0.0004, MAE 0.0221, directional accuracy 0.5274.
-- LightGBM test R2 -0.0122, MAE 0.0222, directional accuracy 0.5449.
-- Tanh NN test R2 0.0146, MAE 0.0220, directional accuracy 0.5473.
+- LightGBM test R2 -0.0159, MAE 0.0222, directional accuracy 0.5444.
+- Tanh NN test R2 0.0171, MAE 0.0220, directional accuracy 0.5395.
 
 A GNN is not recommended as a core thesis model unless the research question is explicitly expanded toward graph learning.
 
@@ -162,8 +162,8 @@ Final two-way clustered results:
 ML results:
 
 - OLS test R2 0.0004, MAE 0.0221, directional accuracy 0.5274.
-- LightGBM test R2 -0.0122, MAE 0.0222, directional accuracy 0.5449.
-- Tanh NN test R2 0.0146, MAE 0.0220, directional accuracy 0.5473.
+- LightGBM test R2 -0.0159, MAE 0.0222, directional accuracy 0.5444.
+- Tanh NN test R2 0.0171, MAE 0.0220, directional accuracy 0.5395.
 
 Interpretation:
 
@@ -180,9 +180,11 @@ This is the current decision point after the latest local work:
 
 - The expanded model has already been implemented and executed.
 - The benchmark and model extensions have already been implemented and executed.
-- Scripts 24 through 29 are present locally.
+- Scripts 24 through 30 are present locally.
+- Script 30 adds sequential specification comparison and has been executed. Its output table is `holdings/results/model_specification_comparison.csv`.
+- The neural network fixes reproducibility seeds at 24 for Python random, NumPy and PyTorch, and the ML baseline has been re-run with that setting.
 - A detailed ETF-level interpretation document has been added at docs/project_context/etf_model_results_interpretation.md.
-- The latest pushed code state before these local extension edits is commit d5049a8 with message adding new variables to the models.
+- The latest pushed code state before these local edits is commit 4a0ec3d with message cleaning code.
 - The current local work should not be committed or pushed until the user reviews the scripts and gives explicit approval.
 
 The priority is now review and interpretation, not new model implementation. Any future AI should first read the new ETF-level interpretation document, then inspect the extension scripts and generated summaries. The main open task is to decide how to explain the results in the thesis, especially the negative direct channel, the stable positive comovement channel, ETF heterogeneity and the sensitivity of factor-model abnormal returns.
@@ -191,7 +193,7 @@ Before any future commit or push, run a privacy review. Do not commit raw holdin
 
 ## Handoff Update After Implementing Extensions
 
-Scripts `24` through `29` have now been added and executed successfully.
+Scripts `24` through `30` have been added and executed successfully.
 
 Do not describe LOO/LTO, Local Projections, Fama-French / Carhart robustness, ETF interactions, quantile regression, or ETF-level result compilation as merely planned work anymore. They are implemented and have generated local outputs under `holdings/results/` and `holdings/figures/`.
 
@@ -203,6 +205,16 @@ Important result memory:
 - ETF interactions: heterogeneity is real and should be discussed formally.
 - Quantile regression: secondary diagnostic only, but it supports negative `b1_term` across the distribution.
 - ETF-level compilation: `29_compile_etf_results.py` creates summary CSVs used by `docs/project_context/etf_model_results_interpretation.md`.
+- Sequential specification comparison: `30_run_specification_comparison.py` compares core, previous improved, full expanded and variable-removal specifications. It records N, adjusted R2, main-channel estimates, p-values, significant channels, runtime and two-way clustering status.
 
 Matched-control / DiD and DML / GNN have not been implemented and remain lower priority.
 Implementation note: `26_run_factor_robustness.py` was reviewed after implementation. The factor robustness merge keys must include `etf` to avoid cross-ETF contamination when the same stock appears in multiple ETFs. The local factor robustness outputs were regenerated after this fix.
+
+
+Sequential specification result memory:
+
+- The specification comparison has been executed.
+- Full expanded adj R2 is 0.0355 versus 0.0309 in the previous improved specification.
+- Significant main channels rise from 3 to 6.
+- Removing the correlation channel makes `b1_term` insignificant (`b1 = -0.4058`, p=0.1070), so pre-event comovement is central to the expanded model.
+- Removing all three new variables reproduces the previous improved specification exactly.
