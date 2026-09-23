@@ -13,9 +13,10 @@ env/
 code/.vscode/
 AGENTS.md
 
+data/
+docs/
 holdings/
-outputs/*
-!outputs/README.md
+outputs/
 *.zip
 
 Related_papers_TFM/
