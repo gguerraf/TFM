@@ -1,43 +1,33 @@
-# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Local environments
 .venv/
 venv/
 environment/
 env/
 
-# IDE settings
 .vscode/
 code/.vscode/
 AGENTS.md
 
-# Local data and generated outputs
 holdings/
 outputs/*
 !outputs/README.md
 *.zip
 
-# Downloaded literature and local temporary extraction files
 Related_papers_TFM/
 tmp_context_extract/
 tmp_extract_context.py
 files/
 
-# Root copies kept only because they may be open/locked locally
 Research_Plan_TFM.pdf
 Progress_report.pdf
 
-# Office temporary lock files
 ~$*.docx
 ~$*.xlsx
 
-# OS files
 .DS_Store
 Thumbs.db
-
-
