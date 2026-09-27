@@ -1,4 +1,4 @@
-"""Download GICS labels"""
+"""Download sector and industry labels from Yahoo Finance"""
 
 import time
 import pandas as pd
@@ -12,15 +12,11 @@ REQUEST_PAUSE = 0.3
 
 PRINT_EVERY   = 50
 
-print("Loading ticker list from returns_clean.csv...")
-_peek    = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
-_idx_col = _peek.columns[0]
-tickers  = [c for c in pd.read_csv(
-                PROC_DIR / "returns_clean.csv", nrows=0).columns
-            if c != _idx_col]
+print("Loading ticker list from prices_raw.csv")
+tickers = [c for c in pd.read_csv(PROC_DIR / "prices_raw.csv", nrows=0).columns[1:]]
 print(f"  Tickers to classify: {len(tickers):,}")
 
-print("\nDownloading GICS classifications from yfinance...")
+print("\nDownloading sector and industry labels from Yahoo Finance")
 print("(This may take 20-30 minutes due to per-ticker requests)\n")
 
 records = []
@@ -54,7 +50,7 @@ n_sectors       = gics_df["sector"].nunique()
 n_industries    = gics_df["industry"].nunique()
 
 print(f"\n{'=' * 50}")
-print(f"GICS DOWNLOAD SUMMARY")
+print(f"SECTOR AND INDUSTRY DOWNLOAD SUMMARY")
 print(f"{'=' * 50}")
 print(f"  Tickers processed       : {len(tickers):,}")
 print(f"  Successfully classified : {len(records):,}")

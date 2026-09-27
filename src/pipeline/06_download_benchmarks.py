@@ -39,7 +39,7 @@ BENCHMARK_CANDIDATES = {
     ],
 }
 
-print("Downloading and evaluating benchmark candidates...")
+print("Downloading and evaluating benchmark candidates")
 print(f"Required date range: {START_DATE} to {END_DATE}")
 print(f"Minimum start date for usability: {MIN_REQUIRED_START.date()}\n")
 

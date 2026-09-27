@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
+from model_extension_utils import first_day_of_episode_events, recompute_interaction_terms
+
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
 OUTPUT_DIR = BASE_DIR / "results"
@@ -28,7 +30,8 @@ BASE_FORMULA = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
                 " + C(stock_j) + C(year_quarter)")
 
 def run_spec(df: pd.DataFrame, label: str, formula: str = None,
-             log_lines: list = None) -> dict:
+             log_lines: list = None,
+             cluster_cols: tuple = ("event_id",)) -> dict:
     """Runs one specification using absorbed fixed effects"""
     if formula is None:
         formula = BASE_FORMULA
@@ -46,7 +49,8 @@ def run_spec(df: pd.DataFrame, label: str, formula: str = None,
     if "C(year_quarter)" in formula:
         absorb_cols.append("year_quarter")
 
-    required = ["AR_j", *terms, *absorb_cols, "event_id"]
+    cluster_cols = list(cluster_cols)
+    required = ["AR_j", *terms, *absorb_cols, *cluster_cols]
     sub = df.dropna(subset=[c for c in required if c in df.columns]).copy()
 
     if len(sub) < 100:
@@ -60,8 +64,10 @@ def run_spec(df: pd.DataFrame, label: str, formula: str = None,
         y = sub["AR_j"]
         x = sub[terms]
         absorb = sub[absorb_cols].astype("category")
-        clusters = pd.Series(pd.Categorical(sub["event_id"]).codes,
-                             index=sub.index, name="event_id")
+        clusters = pd.DataFrame(
+            {col: pd.Categorical(sub[col]).codes for col in cluster_cols},
+            index=sub.index,
+        )
         res = AbsorbingLS(y, x, absorb=absorb).fit(
             cov_type="clustered",
             clusters=clusters,
@@ -73,7 +79,8 @@ def run_spec(df: pd.DataFrame, label: str, formula: str = None,
             log_lines.append(msg)
         return None
 
-    row = {"check": label, "N": res.nobs, "adj_R2": res.rsquared_adj}
+    row = {"check": label, "N": res.nobs, "adj_R2": res.rsquared_adj,
+           "clusters": "+".join(cluster_cols)}
     for term in MAIN_TERMS:
         if term in res.params.index:
             row[f"{term}_coef"] = res.params[term]
@@ -84,7 +91,8 @@ def run_spec(df: pd.DataFrame, label: str, formula: str = None,
 
     if log_lines is not None:
         log_lines.append(f"\n{'=' * 60}")
-        log_lines.append(f"CHECK: {label}  (N = {res.nobs:.0f})")
+        log_lines.append(f"CHECK: {label}  (N = {res.nobs:.0f}, "
+                         f"clustered by {' and '.join(cluster_cols)})")
         log_lines.append(f"{'=' * 60}")
         for term in MAIN_TERMS:
             if term in res.params.index:
@@ -98,6 +106,32 @@ def run_spec(df: pd.DataFrame, label: str, formula: str = None,
 
     return row
 
+def outside_etf_placebo(panel: pd.DataFrame, seed: int = 123):
+    """Replaces each event's shock with a same-date shock from outside the ETF"""
+    rng = np.random.default_rng(seed)
+    events = (panel[["etf", "event_id", "t0", "stock_i", "Shock_i", "w_i"]]
+              .drop_duplicates(["etf", "event_id"]))
+    members = pd.concat([
+        panel[["etf", "t0", "stock_j"]].rename(columns={"stock_j": "stock_i_donor"}),
+        panel[["etf", "t0", "stock_i"]].rename(columns={"stock_i": "stock_i_donor"}),
+    ]).drop_duplicates()
+    members["_held"] = True
+
+    pairs = events.merge(events, on="t0", suffixes=("", "_donor"))
+    pairs = pairs[pairs["etf"] != pairs["etf_donor"]]
+    pairs = pairs.merge(members, on=["etf", "t0", "stock_i_donor"], how="left")
+    pairs = pairs[pairs["_held"].isna()].copy()
+    pairs["_draw"] = rng.random(len(pairs))
+    donors = (pairs.sort_values("_draw")
+              .drop_duplicates(["etf", "event_id"])
+              [["etf", "event_id", "Shock_i_donor", "w_i_donor"]])
+
+    out = panel.merge(donors, on=["etf", "event_id"], how="inner")
+    out["Shock_i"] = out["Shock_i_donor"]
+    out["w_i"] = out["w_i_donor"]
+    out = recompute_interaction_terms(out.drop(columns=["Shock_i_donor", "w_i_donor"]))
+    return out, len(events), len(donors)
+
 def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     """Runs the full robustness battery"""
 
@@ -108,11 +142,11 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     log_lines.append(f"Baseline panel: {len(panel):,} observations")
     log_lines.append(f"Date range: {panel['t0'].min()} to {panel['t0'].max()}")
 
-    print("\nR0: Baseline specification...")
+    print("\nR0: Baseline specification")
     r = run_spec(panel, "R0_Baseline", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R5a: Positive shocks only...")
+    print("R5a: Positive shocks only")
     pos = panel[panel["Neg_e"] == 0].copy()
 
     formula_nosign = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
@@ -124,38 +158,41 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
                  log_lines=log_lines)
     if r: results.append(r)
 
-    print("R5b: Negative shocks only...")
+    print("R5b: Negative shocks only")
     neg = panel[panel["Neg_e"] == 1].copy()
     r = run_spec(neg, "R5b_Negative_shocks", formula=formula_nosign,
                  log_lines=log_lines)
     if r: results.append(r)
 
-    print("R6a: Pre-COVID (before 2020-03-01)...")
+    print("R6a: Pre-COVID (before 2020-03-01)")
     pre_covid = panel[panel["t0"] < "2020-03-01"].copy()
     r = run_spec(pre_covid, "R6a_Pre_COVID", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R6b: Post-COVID (2020-03-01 onward)...")
+    print("R6b: Post-COVID (2020-03-01 onward)")
     post_covid = panel[panel["t0"] >= "2020-03-01"].copy()
     r = run_spec(post_covid, "R6b_Post_COVID", log_lines=log_lines)
     if r: results.append(r)
 
     for etf in panel["etf"].unique():
-        print(f"R9: ETF = {etf}...")
+        print(f"R9: ETF = {etf}")
         sub = panel[panel["etf"] == etf].copy()
         r = run_spec(sub, f"R9_{etf}", log_lines=log_lines)
         if r: results.append(r)
 
-    print("R10: Excluding top-3 weight stocks per ETF...")
-
-    top3 = (panel.groupby("etf")["w_i"]
-            .apply(lambda x: x.nlargest(3).index)
-            .explode().values)
-    excl = panel.loc[~panel.index.isin(top3)].copy()
-    r = run_spec(excl, "R10_Excl_top3_weight", log_lines=log_lines)
+    print("R10: Excluding the top-3 weight origin stocks of each ETF")
+    mean_w = panel.groupby(["etf", "stock_i"], as_index=False)["w_i"].mean()
+    top3 = (mean_w.sort_values("w_i", ascending=False)
+            .groupby("etf").head(3)[["etf", "stock_i"]])
+    for etf, group in top3.groupby("etf"):
+        log_lines.append(f"  R10 excluded origin stocks in {etf}: "
+                         f"{', '.join(group['stock_i'])}")
+    excl = panel.merge(top3.assign(_top3=True), on=["etf", "stock_i"], how="left")
+    excl = excl[excl["_top3"].isna()].drop(columns="_top3")
+    r = run_spec(excl, "R10_Excl_top3_weight_origins", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R11: Trimmed AR_j and Shock_i (1%-99%)...")
+    print("R11: Trimmed AR_j and Shock_i (1%-99%)")
     trim = panel.copy()
     keep = pd.Series(True, index=trim.index)
     for col in ["AR_j", "Shock_i"]:
@@ -165,7 +202,7 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     r = run_spec(trim, "R11_Trimmed_1_99", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R16: Placebo event assignment within ETF...")
+    print("R16: Placebo event assignment within ETF")
     rng = np.random.default_rng(42)
     placebo = panel.copy()
     event_cols = ["event_id", "etf", "Shock_i", "w_i", "Neg_e"]
@@ -195,14 +232,14 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     r = run_spec(placebo, "R16_Placebo_event_assignment", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R17: Randomized ETF membership...")
-    np.random.seed(123)
-    shuffled = panel.copy()
-    shuffled["stock_j"] = np.random.permutation(shuffled["stock_j"].values)
-    r = run_spec(shuffled, "R17_Random_ETF_membership", log_lines=log_lines)
+    print("R17: Placebo with shocks from outside the ETF")
+    outside, n_events, n_matched = outside_etf_placebo(panel, seed=123)
+    log_lines.append(f"\nR17: {n_matched:,} of {n_events:,} events matched "
+                     f"to a same-date shock from outside the ETF")
+    r = run_spec(outside, "R17_Placebo_outside_ETF_shocks", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R18: Pre-event placebo (note: would need recomputed AR_j)...")
+    print("R18: Pre-event placebo (note: would need recomputed AR_j)")
 
     np.random.seed(456)
     pre_event = panel.copy()
@@ -210,13 +247,22 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     r = run_spec(pre_event, "R18_Shuffled_AR_j", log_lines=log_lines)
     if r: results.append(r)
 
-    print("R21: No year-quarter fixed effects...")
+    print("R21: No year-quarter fixed effects")
     formula_no_yq = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
                      " + receiver_weight_term + corr_term + hhi_term"
                      " + asym_term + Illiq_j + Mispricing_k + Similarity_ij"
                      " + w_j + Corr_ij_60d + HHI_etf_t + Neg_e + C(stock_j)")
     r = run_spec(panel, "R21_No_YQ_FE", formula=formula_no_yq,
                  log_lines=log_lines)
+    if r: results.append(r)
+
+    print("R22: Non-overlapping events")
+    first_days = first_day_of_episode_events(panel)
+    non_overlap = panel.merge(first_days, on=["etf", "event_id"], how="inner")
+    log_lines.append(f"\nR22: {len(first_days):,} first-day events, "
+                     f"{len(non_overlap):,} receiver observations")
+    r = run_spec(non_overlap, "R22_Non_overlapping_events", log_lines=log_lines,
+                 cluster_cols=("event_id", "stock_j"))
     if r: results.append(r)
 
     results_df = pd.DataFrame(results)
@@ -231,7 +277,7 @@ def run_all_checks(panel: pd.DataFrame) -> pd.DataFrame:
     print("\n" + "=" * 90)
     print("ROBUSTNESS SUMMARY")
     print("=" * 90)
-    display_cols = ["check", "N", "adj_R2"]
+    display_cols = ["check", "N", "adj_R2", "clusters"]
     for t in MAIN_TERMS:
         display_cols.extend([f"{t}_coef", f"{t}_pval"])
     print(results_df[display_cols].to_string(index=False, float_format="%.4f"))
@@ -287,7 +333,7 @@ if __name__ == "__main__":
         print("Run 21_estimate_improved_model.py first to generate the panel.")
         exit(1)
 
-    print(f"Loading panel from {panel_path}...")
+    print(f"Loading panel from {panel_path}")
     panel = pd.read_csv(panel_path, parse_dates=["t0"])
     print(f"  Panel shape: {panel.shape}")
 

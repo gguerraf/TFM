@@ -74,12 +74,12 @@ def clean_ticker(symbol: str) -> str | None:
 
     return s
 
-print("Loading download report...")
+print("Loading download report")
 report = pd.read_csv(PROC_DIR / "download_report.csv")
 failed = report[~report["downloaded"]]["ticker"].tolist()
 print(f"  Failed tickers to retry: {len(failed):,}")
 
-print("\nApplying ticker cleaning rules...")
+print("\nApplying ticker cleaning rules")
 
 cleaning_map = {}
 for symbol in failed:
@@ -95,7 +95,7 @@ print(f"  Symbols to retry after cleaning   : {len(to_retry):,}")
 cleaned_unique = list(set(to_retry.values()))
 print(f"  Unique cleaned tickers to attempt : {len(cleaned_unique):,}")
 
-print("\nLoading existing prices_raw.csv...")
+print("\nLoading existing prices_raw.csv")
 prices_existing = pd.read_csv(PROC_DIR / "prices_raw.csv",
                                index_col="date", parse_dates=True)
 already_have = set(prices_existing.columns)
@@ -109,7 +109,7 @@ if not cleaned_to_download:
 else:
 
     print(f"\nDownloading {len(cleaned_to_download):,} tickers "
-          f"in batches of {BATCH_SIZE}...")
+          f"in batches of {BATCH_SIZE}")
 
     batches = [cleaned_to_download[i:i+BATCH_SIZE]
                for i in range(0, len(cleaned_to_download), BATCH_SIZE)]
@@ -119,7 +119,7 @@ else:
     still_failed = []
 
     for idx, batch in enumerate(batches):
-        print(f"  Batch {idx+1}/{len(batches)}: {len(batch)} tickers...", end=" ")
+        print(f"  Batch {idx+1}/{len(batches)}: {len(batch)} tickers", end=" ")
         try:
             raw = yf.download(
                 batch,
@@ -156,7 +156,7 @@ else:
             time.sleep(BATCH_PAUSE)
 
     if new_frames:
-        print(f"\nMerging {len(new_frames)} new batches into prices_raw.csv...")
+        print(f"\nMerging {len(new_frames)} new batches into prices_raw.csv")
         new_prices = pd.concat(new_frames, axis=1)
         new_prices = new_prices.loc[:, ~new_prices.columns.duplicated()]
 
@@ -174,7 +174,7 @@ else:
 
     print(f"  Still failed after retry: {len(still_failed):,}")
 
-print("\nUpdating download_report.csv...")
+print("\nUpdating download_report.csv")
 
 final_tickers = set(combined.columns) if 'combined' in dir()\
                 else set(prices_existing.columns)

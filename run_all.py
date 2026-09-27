@@ -27,7 +27,6 @@ PIPELINE_STEPS = [
 ]
 
 MODEL_STEPS = [
-    "src/models/20_estimate_baseline_model.py",
     "src/models/21_estimate_improved_model.py",
     "src/models/22_run_robustness_checks.py",
     "src/models/23_run_ml_baselines.py",
@@ -38,6 +37,7 @@ MODEL_STEPS = [
     "src/models/28_run_quantile_regression.py",
     "src/models/29_compile_etf_results.py",
     "src/models/30_run_specification_comparison.py",
+    "src/models/31_compute_marginal_effects.py",
 ]
 
 ANALYSIS_STEPS = [

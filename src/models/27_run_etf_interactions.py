@@ -35,14 +35,14 @@ def add_etf_interactions(panel):
     return df, interaction_terms
 
 def main():
-    print("Loading improved panel...")
+    print("Loading improved panel")
     panel = load_panel()
     print(f"  Panel shape: {panel.shape}")
 
     df, interaction_terms = add_etf_interactions(panel)
     terms = MODEL_TERMS + interaction_terms
 
-    print("Estimating pooled ETF-interaction model...")
+    print("Estimating pooled ETF-interaction model")
     res, used = fit_absorbed(df, terms=terms)
     rows = [result_row("pooled_etf_interactions", res, terms=MAIN_TERMS + interaction_terms)]
     summary = pd.DataFrame(rows)

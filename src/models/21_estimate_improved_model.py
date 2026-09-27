@@ -5,14 +5,15 @@ warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
-import statsmodels.formula.api as smf
 from linearmodels.iv.absorbing import AbsorbingLS
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 from itertools import product
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
+
+from model_extension_utils import holdings_paths, is_fresh, window_abnormal_returns
 
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
@@ -53,7 +54,7 @@ REQUIRED_PANEL_COLUMNS = {
     "receiver_weight_term", "corr_term", "hhi_term",
 }
 
-print("\nLoading returns_clean.csv...")
+print("\nLoading returns_clean.csv")
 _peek      = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
 _idx_col   = _peek.columns[0]
 returns    = pd.read_csv(PROC_DIR / "returns_clean.csv",
@@ -61,7 +62,7 @@ returns    = pd.read_csv(PROC_DIR / "returns_clean.csv",
 returns.index = pd.to_datetime(returns.index)
 print(f"  Returns shape: {returns.shape}")
 
-print("Loading benchmarks.csv...")
+print("Loading benchmarks.csv")
 _bpeak   = pd.read_csv(PROC_DIR / "benchmarks.csv", nrows=0)
 _bidx    = _bpeak.columns[0]
 benchmarks_df = pd.read_csv(PROC_DIR / "benchmarks.csv",
@@ -120,12 +121,12 @@ def select_benchmark(etf: str) -> tuple:
 def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
                                 ret_bench:  pd.Series) -> pd.DataFrame:
     """Identifies shock events using event-specific thresholds"""
-    bench = ret_bench.reindex(ret_stocks.index).fillna(0).values
+    bench = ret_bench.reindex(ret_stocks.index).to_numpy(dtype=float)
     dates = ret_stocks.index
     T     = len(dates)
     records = []
 
-    X_full = np.column_stack([np.ones(T), bench])
+    x_full = np.column_stack([np.ones(T), bench])
     min_event_idx = ESTIMATION_WINDOW + GAP
     max_event_idx = T - EVENT_H - 1
 
@@ -134,77 +135,33 @@ def identify_shocks_vectorized(ret_stocks: pd.DataFrame,
         return pd.DataFrame()
 
     event_indices = np.arange(min_event_idx, max_event_idx)
-    est_starts = event_indices - ESTIMATION_WINDOW - GAP
-    est_ends   = event_indices - GAP
-
-    valid_mask    = est_starts >= 0
-    event_indices = event_indices[valid_mask]
-    est_starts    = est_starts[valid_mask]
-    est_ends      = est_ends[valid_mask]
-    n_valid       = len(event_indices)
-
-    print(f"  Valid event dates: {n_valid:,}")
+    print(f"  Valid event dates: {len(event_indices):,}")
     n_stocks = ret_stocks.shape[1]
 
     for s_idx, ticker in enumerate(ret_stocks.columns):
         if s_idx % 10 == 0:
             print(f"    Processing stock {s_idx+1}/{n_stocks}: {ticker}")
 
-        y_full = ret_stocks[ticker].fillna(0).values
-
-        idx_matrix = (est_starts[:, None] +
-                      np.arange(ESTIMATION_WINDOW)[None, :])
-        Y_batch = y_full[idx_matrix]
-        X_batch = X_full[idx_matrix]
-
-        XtX = np.einsum('kij,kil->kjl', X_batch, X_batch)
-        Xty = np.einsum('kij,ki->kj',   X_batch, Y_batch)
-
-        det  = XtX[:, 0, 0] * XtX[:, 1, 1] - XtX[:, 0, 1] * XtX[:, 1, 0]
-        safe = np.abs(det) > 1e-12
-
-        alphas = np.full(n_valid, np.nan)
-        betas  = np.full(n_valid, np.nan)
-
-        alphas[safe] = (XtX[safe, 1, 1] * Xty[safe, 0]
-                        - XtX[safe, 0, 1] * Xty[safe, 1]) / det[safe]
-        betas[safe]  = (XtX[safe, 0, 0] * Xty[safe, 1]
-                        - XtX[safe, 1, 0] * Xty[safe, 0]) / det[safe]
-
-        Y_pred = alphas[:, None] + betas[:, None] * X_batch[:, :, 1]
-        residuals = Y_batch - Y_pred
-        sigma_eps = np.nanstd(residuals, axis=1, ddof=2)
-
+        y_full = ret_stocks[ticker].to_numpy(dtype=float)
+        coefs, sigma_eps, ar = window_abnormal_returns(y_full, x_full, event_indices, EVENT_H)
+        cars = ar.sum(axis=1)
         car_threshold = SHOCK_THRESHOLD * np.sqrt(EVENT_H + 1) * sigma_eps
 
-        ev_idx_matrix = (event_indices[:, None] +
-                         np.arange(EVENT_H + 1)[None, :])
-        ev_idx_matrix = np.clip(ev_idx_matrix, 0, T - 1)
+        with np.errstate(invalid="ignore"):
+            flagged = (np.isfinite(cars) & np.isfinite(car_threshold)
+                       & (car_threshold >= 1e-10) & (np.abs(cars) > car_threshold))
 
-        R_event  = y_full[ev_idx_matrix]
-        Rm_event = bench[ev_idx_matrix]
-
-        AR = (R_event
-              - alphas[:, None]
-              - betas[:, None] * Rm_event)
-        CARs = AR.sum(axis=1)
-
-        for k in range(n_valid):
-            if np.isnan(alphas[k]) or np.isnan(CARs[k]):
-                continue
-            if np.isnan(car_threshold[k]) or car_threshold[k] < 1e-10:
-                continue
-            if abs(CARs[k]) > car_threshold[k]:
-                records.append({
-                    "t0":              dates[event_indices[k]],
-                    "stock_i":         ticker,
-                    "car_i":           CARs[k],
-                    "is_negative":     int(CARs[k] < 0),
-                    "sigma_eps":       sigma_eps[k],
-                    "car_threshold":   car_threshold[k],
-                    "alpha":           alphas[k],
-                    "beta":            betas[k],
-                })
+        for k in np.flatnonzero(flagged):
+            records.append({
+                "t0":              dates[event_indices[k]],
+                "stock_i":         ticker,
+                "car_i":           cars[k],
+                "is_negative":     int(cars[k] < 0),
+                "sigma_eps":       sigma_eps[k],
+                "car_threshold":   car_threshold[k],
+                "alpha":           coefs[k, 0],
+                "beta":            coefs[k, 1],
+            })
 
     return pd.DataFrame(records)
 
@@ -266,40 +223,11 @@ def pre_event_corr(x: np.ndarray, y: np.ndarray) -> float:
         return np.nan
     return float(np.corrcoef(x, y)[0, 1])
 
-def compute_car_single(ret_stock: pd.Series,
-                        ret_bench: pd.Series,
-                        t0: pd.Timestamp) -> float:
-    """Computes CAR for a single receiver stock at a single event date"""
-    pre = ret_stock.index[ret_stock.index < t0]
-    if len(pre) < ESTIMATION_WINDOW + GAP:
+def receiver_car(y_full: np.ndarray, x_full: np.ndarray, pos: int) -> float:
+    """CAR of a receiver over the event window, NaN when returns are missing"""
+    if pos < ESTIMATION_WINDOW + GAP or pos + EVENT_H >= len(y_full):
         return np.nan
-
-    est_end   = pre[-(GAP + 1)]
-    est_start = pre[-(ESTIMATION_WINDOW + GAP)]
-
-    mask = (ret_stock.index >= est_start) & (ret_stock.index <= est_end)
-    y    = ret_stock[mask].fillna(0).values
-    x    = ret_bench.reindex(ret_stock[mask].index).fillna(0).values
-
-    if len(y) < 30:
-        return np.nan
-
-    X = np.column_stack([np.ones(len(x)), x])
-    try:
-        coefs, *_ = np.linalg.lstsq(X, y, rcond=None)
-    except Exception:
-        return np.nan
-
-    alpha, beta = coefs[0], coefs[1]
-
-    future = ret_stock.index[ret_stock.index >= t0]
-    if len(future) < EVENT_H + 1:
-        return np.nan
-
-    w_dates = future[:EVENT_H + 1]
-    ar = (ret_stock.reindex(w_dates).fillna(0).values
-          - alpha
-          - beta * ret_bench.reindex(w_dates).fillna(0).values)
+    _, _, ar = window_abnormal_returns(y_full, x_full, np.array([pos]), EVENT_H)
     return float(ar.sum())
 
 def build_panel(shocks:      pd.DataFrame,
@@ -311,6 +239,9 @@ def build_panel(shocks:      pd.DataFrame,
     """Builds the observation panel (j, e) for the spillover regression"""
     rows = []
     hold_dates = sorted(pd.to_datetime(holdings_df["atDate"].unique()).tolist())
+    bench_full = np.column_stack([np.ones(len(ret_stocks.index)),
+                                  ret_bench.reindex(ret_stocks.index).to_numpy(dtype=float)])
+    date_pos = {d: k for k, d in enumerate(ret_stocks.index)}
     n_shocks   = len(shocks)
     holdings_cache = {}
     car_cache = {}
@@ -328,14 +259,14 @@ def build_panel(shocks:      pd.DataFrame,
 
     for evt_idx, (_, shock) in enumerate(shocks.iterrows()):
         if evt_idx % 500 == 0:
-            print(f"    Building panel: event {evt_idx}/{n_shocks}...", flush=True)
+            print(f"    Building panel: event {evt_idx}/{n_shocks}", flush=True)
 
         t0      = shock["t0"]
         stock_i = shock["stock_i"]
         car_i   = shock["car_i"]
         is_neg  = shock["is_negative"]
 
-        pos = bisect_right(hold_dates, t0) - 1
+        pos = bisect_left(hold_dates, t0) - 1
         if pos < 0:
             continue
         t_hold = hold_dates[pos]
@@ -390,10 +321,10 @@ def build_panel(shocks:      pd.DataFrame,
                 if overlap:
                     continue
 
-            r_j  = ret_stocks[stock_j]
             car_key = (stock_j, t0)
             if car_key not in car_cache:
-                car_cache[car_key] = compute_car_single(r_j, ret_bench, t0)
+                car_cache[car_key] = receiver_car(ret_stocks[stock_j].to_numpy(dtype=float),
+                                                  bench_full, date_pos[t0])
             ar_j = car_cache[car_key]
             if np.isnan(ar_j):
                 continue
@@ -469,7 +400,7 @@ def run_regression(panel: pd.DataFrame) -> None:
     print(f"  Receivers  : {n_unique_stocks:,}")
     print(f"  Year-qtrs  : {n_unique_yq:,}")
 
-    print("\nEstimating absorbed fixed-effects model...")
+    print("\nEstimating absorbed fixed-effects model")
     result_oneway = _estimate_absorbed(
         df, main_terms, ["event_id"], "One-way clustered by event_id")
 
@@ -479,7 +410,7 @@ def run_regression(panel: pd.DataFrame) -> None:
     print("=" * 70)
     _print_results(result_oneway, main_terms)
 
-    print("\nEstimating two-way clustered standard errors...")
+    print("\nEstimating two-way clustered standard errors")
     try:
         result_twoway = _estimate_absorbed(
             df, main_terms, ["event_id", "stock_j"],
@@ -617,51 +548,36 @@ def _plot_coefs(result, terms):
 
 def asymmetry_analysis(panel: pd.DataFrame) -> None:
     """Estimates the model separately for positive and negative shocks"""
+    terms = ["b1_term", "b2_term", "b4_term", "b5_term",
+             "receiver_weight_term", "corr_term", "hhi_term",
+             "Illiq_j", "Mispricing_k", "Similarity_ij",
+             "w_j", "Corr_ij_60d", "HHI_etf_t"]
     for sign, label in [(0, "POSITIVE"), (1, "NEGATIVE")]:
         sub = panel[panel["Neg_e"] == sign].dropna(
-            subset=["AR_j", "b1_term", "b2_term", "b4_term", "b5_term",
-                    "receiver_weight_term", "corr_term", "hhi_term",
-                    "Illiq_j", "Mispricing_k", "Similarity_ij",
-                    "w_j", "Corr_ij_60d", "HHI_etf_t"])
+            subset=["AR_j", *terms, "stock_j", "year_quarter", "event_id"])
         if len(sub) < 50:
             print(f"[WARN] Too few {label} shocks ({len(sub)}). Skipping.")
             continue
-        formula = ("AR_j ~ b1_term + b2_term + b4_term + b5_term"
-                   " + receiver_weight_term + corr_term + hhi_term"
-                   " + Illiq_j + Mispricing_k + Similarity_ij"
-                   " + w_j + Corr_ij_60d + HHI_etf_t"
-                   " + C(stock_j) + C(year_quarter)")
-        try:
-            res = smf.ols(formula, data=sub).fit(
-                cov_type="cluster",
-                cov_kwds={"groups": sub["event_id"]})
-        except Exception as e:
-            print(f"[WARN] {label} shock regression failed: {e}")
-            continue
+        res = _estimate_absorbed(sub, terms, ["event_id"], "One-way clustered by event_id")
         print(f"\n{'=' * 60}")
-        print(f"SUBSAMPLE: {label} SHOCKS  (N={res.nobs:.0f})")
+        print(f"SUBSAMPLE: {label} SHOCKS  (N={res['nobs']:.0f})")
         print(f"{'=' * 60}")
-        terms = ["b1_term", "b2_term", "b4_term", "b5_term",
-                 "receiver_weight_term", "corr_term", "hhi_term"]
-        tbl = res.summary2().tables[1]
-        available_cols = [c for c in ["Coef.", "Std.Err.", "t", "P>|t|",
-                                       "z", "P>|z|"]
-                          if c in tbl.columns]
-        valid_terms = [t for t in terms if t in tbl.index]
-        print(tbl.loc[valid_terms, available_cols])
+        _print_results(res, terms[:7])
 
 if __name__ == "__main__":
 
     panel_path = OUTPUT_DIR / "panel_improved.csv"
-    if panel_path.exists():
+    inputs = [PROC_DIR / "returns_clean.csv", PROC_DIR / "benchmarks.csv",
+              PROC_DIR / "amihud.csv", gics_path, *holdings_paths()]
+    if is_fresh(panel_path, inputs):
         existing_cols = set(pd.read_csv(panel_path, nrows=0).columns)
         if REQUIRED_PANEL_COLUMNS.issubset(existing_cols):
-            print(f"\nLoading existing panel from {panel_path}...")
+            print(f"\nLoading existing panel from {panel_path}")
             full_panel = pd.read_csv(panel_path, parse_dates=["t0"])
             print(f"  Panel shape: {full_panel.shape}")
             run_regression(full_panel)
             import sys; sys.exit(0)
-        print(f"\nExisting panel missing new variables. Rebuilding {panel_path}...")
+        print(f"\nExisting panel missing new variables. Rebuilding {panel_path}")
 
     panels_all = []
     all_shock_diagnostics = []
@@ -695,7 +611,7 @@ if __name__ == "__main__":
             continue
 
         print(f"\n  Identifying shocks "
-              f"(threshold={SHOCK_THRESHOLD}sigma, event-specific)...")
+              f"(threshold={SHOCK_THRESHOLD}sigma, event-specific)")
         shocks = identify_shocks_vectorized(ret_stocks, ret_bench)
         print(f"  Shocks identified: {len(shocks):,}")
 
@@ -710,7 +626,7 @@ if __name__ == "__main__":
         n_pos = len(shocks) - n_neg
         print(f"  Positive shocks: {n_pos:,}  |  Negative shocks: {n_neg:,}")
 
-        print(f"\n  Building observation panel (j, e)...")
+        print(f"\n  Building observation panel (j, e)")
         panel = build_panel(shocks, hold_df, ret_stocks,
                             ret_bench, etf_ret, etf)
         print(f"  Panel observations: {len(panel):,}")

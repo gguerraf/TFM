@@ -436,6 +436,49 @@ def ols_baseline(X_train, y_train, X_test, y_test, feature_names, log_lines):
 
     return r_test
 
+def naive_baselines(train_df, test_df, log_lines):
+    """Naive reference predictors on the test set"""
+    print("\n" + "=" * 60)
+    print("NAIVE BASELINES (test set)")
+    print("=" * 60)
+
+    y_test = test_df[TARGET_COL].values
+    train_mean = train_df[TARGET_COL].mean()
+    pred_mean = np.full(len(y_test), train_mean)
+
+    rows = [
+        {
+            "Model": "Training mean",
+            "R2": r2_score(y_test, pred_mean),
+            "MAE": mean_absolute_error(y_test, pred_mean),
+            "DirAcc": np.nan,
+        },
+        {
+            "Model": "Always negative",
+            "R2": np.nan,
+            "MAE": np.nan,
+            "DirAcc": np.mean(y_test < 0),
+        },
+        {
+            "Model": "Same sign as the shock",
+            "R2": np.nan,
+            "MAE": np.nan,
+            "DirAcc": np.mean(np.sign(test_df["Shock_i"].values) == np.sign(y_test)),
+        },
+    ]
+    naive = pd.DataFrame(rows)
+    naive.to_csv(OUTPUT_DIR / "naive_baselines.csv", index=False)
+    print(naive.to_string(index=False, float_format="%.4f"))
+
+    log_lines.append("\nNAIVE BASELINES (test set)")
+    log_lines.append("=" * 40)
+    for r in rows:
+        parts = [f"{k}={r[k]:.6f}" if k != "DirAcc" else f"{k}={r[k]:.4f}"
+                 for k in ["R2", "MAE", "DirAcc"] if not np.isnan(r[k])]
+        log_lines.append(f"  {r['Model']}: " + ", ".join(parts))
+
+    return naive
+
 if __name__ == "__main__":
     log_lines = []
 
@@ -453,6 +496,8 @@ if __name__ == "__main__":
     nn_model, nn_result = run_neural_network(
         X_train, y_train, X_val, y_val, X_test, y_test,
         feature_names, log_lines)
+
+    naive_baselines(train_df, test_df, log_lines)
 
     print("\n" + "=" * 60)
     print("MODEL COMPARISON")

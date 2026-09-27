@@ -11,6 +11,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+from model_extension_utils import is_fresh
+
 BASE_DIR   = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR   = BASE_DIR / "processed"
 OUTPUT_DIR = BASE_DIR / "results"
@@ -42,7 +44,7 @@ SHOCK_THRESHOLD = 1.5
 ILLIQ_WINDOW      = 20
 MISPRICING_WINDOW = 5
 
-print("\nLoading returns_clean.csv...")
+print("\nLoading returns_clean.csv")
 _peek      = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
 _idx_col   = _peek.columns[0]
 returns    = pd.read_csv(PROC_DIR / "returns_clean.csv",
@@ -50,7 +52,7 @@ returns    = pd.read_csv(PROC_DIR / "returns_clean.csv",
 returns.index = pd.to_datetime(returns.index)
 print(f"  Returns shape: {returns.shape}")
 
-print("Loading benchmarks.csv...")
+print("Loading benchmarks.csv")
 _bpeak   = pd.read_csv(PROC_DIR / "benchmarks.csv", nrows=0)
 _bidx    = _bpeak.columns[0]
 benchmarks_df = pd.read_csv(PROC_DIR / "benchmarks.csv",
@@ -315,7 +317,7 @@ def build_panel(shocks:      pd.DataFrame,
 
     for evt_idx, (_, shock) in enumerate(shocks.iterrows()):
         if evt_idx % 500 == 0:
-            print(f"    Building panel: event {evt_idx}/{n_shocks}...")
+            print(f"    Building panel: event {evt_idx}/{n_shocks}")
 
         t0      = shock["t0"]
         stock_i = shock["stock_i"]
@@ -385,7 +387,7 @@ def run_regression(panel: pd.DataFrame) -> None:
               f"Try lowering SHOCK_THRESHOLD.")
         return
 
-    print(f"\nEstimating regression on {len(df):,} observations...")
+    print(f"\nEstimating regression on {len(df):,} observations")
 
     formula = ("AR_j ~ b1_term + b2_term + b4_term + b5_term + asym_term"
                " + C(stock_j)")
@@ -465,9 +467,11 @@ def asymmetry_analysis(panel: pd.DataFrame) -> None:
 if __name__ == "__main__":
 
     panel_path = OUTPUT_DIR / "panel_full.csv"
-    if panel_path.exists():
+    inputs = [PROC_DIR / "returns_clean.csv", PROC_DIR / "benchmarks.csv", amihud_path, gics_path,
+              *[PROC_DIR / f"{etf.lower()}_holdings.csv" for etf in ETF_LIST]]
+    if is_fresh(panel_path, inputs):
         print("")
-        print(f"Loading existing panel from {panel_path}...")
+        print(f"Loading existing panel from {panel_path}")
         full_panel = pd.read_csv(panel_path, parse_dates=["t0"])
         print(f"  Panel shape: {full_panel.shape}")
         run_regression(full_panel)
@@ -504,7 +508,7 @@ if __name__ == "__main__":
             continue
 
         print(f"\n  Identifying shocks "
-              f"(threshold={SHOCK_THRESHOLD}sigma, vectorized)...")
+              f"(threshold={SHOCK_THRESHOLD}sigma, vectorized)")
         shocks = identify_shocks_vectorized(ret_stocks, ret_bench)
         print(f"  Shocks identified: {len(shocks):,}")
 
@@ -516,7 +520,7 @@ if __name__ == "__main__":
         n_pos = len(shocks) - n_neg
         print(f"  Positive shocks: {n_pos:,}  |  Negative shocks: {n_neg:,}")
 
-        print(f"\n  Building observation panel (j, e)...")
+        print(f"\n  Building observation panel (j, e)")
         panel = build_panel(shocks, hold_df, ret_stocks,
                             ret_bench, etf_ret, etf)
         print(f"  Panel observations: {len(panel):,}")

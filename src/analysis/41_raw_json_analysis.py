@@ -26,7 +26,7 @@ ETF_FOLDERS = {
 plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_context("paper", font_scale=1.2)
 
-print("Starting Exploratory Data Analysis (EDA) & Quality Report...\n")
+print("Starting Exploratory Data Analysis (EDA) & Quality Report\n")
 
 print("="*80)
 print("1. CALENDAR & MISSING DATA ANALYSIS (READING RAW JSONs)")
@@ -44,7 +44,7 @@ for etf in ETF_LIST:
     valid_dates_list = []
     empty_or_bad_files = 0
 
-    print(f"Scanning {len(json_files)} raw JSON files for {etf}...", end=" ")
+    print(f"Scanning {len(json_files)} raw JSON files for {etf}", end=" ")
 
     for fpath in json_files:
         try:
@@ -144,7 +144,7 @@ if outliers_list:
     outliers_path = PROC_DIR / "etf_outliers_jsons.csv"
     df_outliers.to_csv(outliers_path, index=False)
 
-print("\nGenerating 'Weight Distribution' plot...")
+print("\nGenerating 'Weight Distribution' plot")
 df_weights = pd.concat(latest_holdings)
 
 plt.figure(figsize=(10, 6))
@@ -157,7 +157,7 @@ plt.tight_layout()
 plt.savefig(FIG_DIR / "2_weight_distribution.png", dpi=300)
 plt.close()
 
-print("Generating 'Returns Distribution & Outliers' plot...")
+print("Generating 'Returns Distribution & Outliers' plot")
 flat_returns = returns.values.flatten()
 flat_returns = flat_returns[~np.isnan(flat_returns)]
 
@@ -180,7 +180,7 @@ plt.tight_layout()
 plt.savefig(FIG_DIR / "3_returns_distribution.png", dpi=300)
 plt.close()
 
-print("Generating 'Market Illiquidity (Amihud)' plot...")
+print("Generating 'Market Illiquidity (Amihud)' plot")
 amihud = pd.read_csv(PROC_DIR / "amihud.csv", index_col="date", parse_dates=True)
 market_illiquidity = amihud.mean(axis=1)
 

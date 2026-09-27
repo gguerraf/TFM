@@ -159,7 +159,7 @@ def to_dt_series(s) -> pd.Series:
     except Exception:
         return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
 
-print("Loading prices_raw.csv...")
+print("Loading prices_raw.csv")
 
 _peek      = pd.read_csv(PROC_DIR / "prices_raw.csv", nrows=0)
 _first_col = _peek.columns[0]
@@ -175,7 +175,7 @@ report_rows = []
 n_patched   = 0
 n_skipped   = 0
 
-print(f"\nProcessing {len(TICKER_MAP)} ticker mappings...")
+print(f"\nProcessing {len(TICKER_MAP)} ticker mappings")
 
 for old_ticker, info in TICKER_MAP.items():
     new_ticker  = info["new"]

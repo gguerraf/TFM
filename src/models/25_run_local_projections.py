@@ -10,18 +10,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from model_extension_utils import (
-    ESTIMATION_WINDOW,
     FIG_DIR,
-    GAP,
     MAIN_TERMS,
     MODEL_TERMS,
     OUTPUT_DIR,
+    PROC_DIR,
+    event_positions,
     fit_absorbed,
+    is_fresh,
     load_benchmark_returns,
     load_panel,
     load_returns,
     result_row,
     select_benchmark,
+    window_abnormal_returns,
 )
 
 MAX_HORIZON = 10
@@ -31,34 +33,14 @@ DETAILS_PATH = OUTPUT_DIR / "local_projections_details.txt"
 FIG_PATH = FIG_DIR / "local_projection_irf.png"
 
 def batch_car_paths(ret_stock, ret_bench, event_dates, max_horizon):
-    event_dates = pd.to_datetime(pd.Series(event_dates).dropna().unique())
     idx = ret_stock.index.intersection(ret_bench.index).sort_values()
-    y_full = ret_stock.reindex(idx).astype(float).fillna(0.0).to_numpy()
-    b_full = ret_bench.reindex(idx).astype(float).fillna(0.0).to_numpy()
-    pos = idx.get_indexer(event_dates)
-    valid = (pos >= ESTIMATION_WINDOW + GAP) & (pos >= 0) & (pos + max_horizon < len(idx))
-    dates = event_dates[valid]
-    pos = pos[valid]
+    dates, pos = event_positions(idx, event_dates, max_horizon)
     cols = [f"AR_j_h{h}" for h in range(max_horizon + 1)]
     if len(pos) == 0:
         return pd.DataFrame(columns=["t0", *cols])
-    starts = pos - ESTIMATION_WINDOW - GAP
-    win_idx = starts[:, None] + np.arange(ESTIMATION_WINDOW)[None, :]
-    x_batch = np.stack([np.ones_like(win_idx, dtype=float), b_full[win_idx]], axis=2)
-    y_batch = y_full[win_idx]
-    xtx = np.einsum("nwp,nwq->npq", x_batch, x_batch)
-    xty = np.einsum("nwp,nw->np", x_batch, y_batch)
-    coefs = np.full((len(pos), 2), np.nan)
-    try:
-        coefs = np.linalg.solve(xtx, xty[..., None]).squeeze(-1)
-    except Exception:
-        for k in range(len(pos)):
-            try:
-                coefs[k], *_ = np.linalg.lstsq(x_batch[k], y_batch[k], rcond=None)
-            except Exception:
-                pass
-    ev_idx = pos[:, None] + np.arange(max_horizon + 1)[None, :]
-    ar = y_full[ev_idx] - coefs[:, 0, None] - coefs[:, 1, None] * b_full[ev_idx]
+    y_full = ret_stock.reindex(idx).astype(float).to_numpy()
+    x_full = np.column_stack([np.ones(len(idx)), ret_bench.reindex(idx).astype(float).to_numpy()])
+    _, _, ar = window_abnormal_returns(y_full, x_full, pos, max_horizon)
     car = np.cumsum(ar, axis=1)
     out = pd.DataFrame(car, columns=cols)
     out.insert(0, "t0", dates)
@@ -66,7 +48,8 @@ def batch_car_paths(ret_stock, ret_bench, event_dates, max_horizon):
 
 def compute_outcomes(panel, returns, bench_returns):
     cached_cols = ["row_id", *[f"AR_j_h{h}" for h in range(MAX_HORIZON + 1)]]
-    if OUTCOME_PATH.exists():
+    inputs = [OUTPUT_DIR / "panel_improved.csv", PROC_DIR / "returns_clean.csv", PROC_DIR / "benchmarks.csv"]
+    if is_fresh(OUTCOME_PATH, inputs):
         cached = pd.read_csv(OUTCOME_PATH)
         if set(cached_cols).issubset(cached.columns) and len(cached) == len(panel):
             print(f"Loading cached local projection outcomes: {OUTCOME_PATH}")
@@ -77,7 +60,7 @@ def compute_outcomes(panel, returns, bench_returns):
         outcomes[f"AR_j_h{h}"] = np.nan
 
     for etf, etf_panel in panel.groupby("etf", sort=False):
-        print(f"Computing dynamic outcomes for {etf}...")
+        print(f"Computing dynamic outcomes for {etf}")
         _, ret_bench = select_benchmark(etf, returns, bench_returns)
         for stock_j, stock_panel in etf_panel.groupby("stock_j", sort=False):
             if stock_j not in returns.columns:
@@ -111,7 +94,7 @@ def plot_irf(summary):
     plt.close()
 
 def main():
-    print("Loading panel and returns...")
+    print("Loading panel and returns")
     panel = load_panel().reset_index(drop=True)
     panel["row_id"] = np.arange(len(panel))
     returns = load_returns()
@@ -123,7 +106,7 @@ def main():
     detail_blocks = []
     for h in range(MAX_HORIZON + 1):
         y_col = f"AR_j_h{h}"
-        print(f"Estimating local projection horizon h={h}...")
+        print(f"Estimating local projection horizon h={h}")
         res, used = fit_absorbed(panel, y_col=y_col, terms=MODEL_TERMS)
         row = result_row(f"LP_h{h}", res)
         row["horizon"] = h

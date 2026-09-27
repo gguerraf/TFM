@@ -44,7 +44,7 @@ def build_design(df):
     return y, x
 
 def main():
-    print("Loading improved panel...")
+    print("Loading improved panel")
     panel = load_panel()
     df = prepare_sample(panel)
     print(f"Quantile regression sample: {len(df):,} rows")
@@ -60,7 +60,7 @@ def main():
     ]
 
     for q in QUANTILES:
-        print(f"Estimating quantile q={q:.2f}...")
+        print(f"Estimating quantile q={q:.2f}")
         res = model.fit(q=q, max_iter=1000, p_tol=1e-5)
         row = {"quantile": q, "N": res.nobs}
         details.append("=" * 80)

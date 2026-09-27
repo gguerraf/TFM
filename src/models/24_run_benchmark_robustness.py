@@ -11,9 +11,12 @@ from model_extension_utils import (
     MAIN_TERMS,
     MODEL_TERMS,
     OUTPUT_DIR,
+    PROC_DIR,
     batch_market_car_for_dates,
     fit_absorbed,
     format_result_block,
+    holdings_paths,
+    is_fresh,
     load_holdings,
     load_panel,
     load_returns,
@@ -31,7 +34,7 @@ def compute_origin_shocks(panel, returns):
     events = panel[["etf", "event_id", "stock_i", "t0"]].drop_duplicates().copy()
     out_parts = []
     for etf, ev in events.groupby("etf", sort=False):
-        print(f"Computing ETF(-i) origin shocks for {etf}...")
+        print(f"Computing ETF(-i) origin shocks for {etf}")
         holdings = load_holdings(etf)
         etf_symbols = holdings["symbol"].dropna().unique().tolist()
         cols = [c for c in etf_symbols if c in returns.columns]
@@ -64,7 +67,7 @@ def compute_receiver_outcomes(panel, returns):
     result["AR_j_loo_receiver"] = np.nan
 
     for etf, etf_panel in panel.groupby("etf", sort=False):
-        print(f"Computing receiver outcomes for {etf}...")
+        print(f"Computing receiver outcomes for {etf}")
         holdings = load_holdings(etf)
         etf_symbols = holdings["symbol"].dropna().unique().tolist()
         cols = [c for c in etf_symbols if c in returns.columns]
@@ -100,7 +103,8 @@ def compute_receiver_outcomes(panel, returns):
 
 def build_or_load_robust_panel(panel, returns):
     needed = {"Shock_i_loo", "threshold_loo", "survives_loo", "AR_j_lto", "AR_j_loo_receiver"}
-    if ROBUST_PANEL_PATH.exists():
+    inputs = [OUTPUT_DIR / "panel_improved.csv", PROC_DIR / "returns_clean.csv", *holdings_paths()]
+    if is_fresh(ROBUST_PANEL_PATH, inputs):
         cached_cols = set(pd.read_csv(ROBUST_PANEL_PATH, nrows=0).columns)
         if needed.issubset(cached_cols):
             print(f"Loading cached benchmark robustness panel: {ROBUST_PANEL_PATH}")
@@ -128,7 +132,7 @@ def run_variant(panel, label, y_col, survive_only):
     return result_row(label, res), format_result_block(label, res), len(used)
 
 def main():
-    print("Loading panel and returns...")
+    print("Loading panel and returns")
     panel = load_panel().reset_index(drop=True)
     returns = load_returns()
     robust = build_or_load_robust_panel(panel, returns)
@@ -146,7 +150,7 @@ def main():
     details.append("")
 
     for label, y_col, survive_only in variants:
-        print(f"Estimating {label}...")
+        print(f"Estimating {label}")
         try:
             row, block, n_used = run_variant(robust, label, y_col, survive_only)
             row["rows_used"] = n_used

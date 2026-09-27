@@ -163,7 +163,7 @@ def main():
     panel = pd.read_csv(PANEL_PATH, parse_dates=["t0"])
     rows = []
     for spec in SPECIFICATIONS:
-        print(f"Estimating {spec['specification']}...")
+        print(f"Estimating {spec['specification']}")
         rows.append(build_row(spec, panel))
     summary = add_reference_changes(pd.DataFrame(rows))
     summary.to_csv(SUMMARY_PATH, index=False)

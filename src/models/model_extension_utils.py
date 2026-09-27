@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from linearmodels.iv.absorbing import AbsorbingLS
+from scipy.stats import norm
 
 BASE_DIR = Path(__file__).resolve().parents[2] / "holdings"
 PROC_DIR = BASE_DIR / "processed"
@@ -32,6 +33,7 @@ ETF_BENCHMARK_CANDIDATES = {
 }
 
 ESTIMATION_WINDOW = 120
+MIN_EST_OBS = 108
 GAP = 5
 EVENT_H = 3
 SHOCK_THRESHOLD = 1.5
@@ -47,6 +49,17 @@ CONTROL_TERMS = [
     "Corr_ij_60d", "HHI_etf_t", "Neg_e",
 ]
 MODEL_TERMS = MAIN_TERMS + CONTROL_TERMS
+
+WEIGHTED_MODERATORS = {
+    "b2_term": "Illiq_j",
+    "b4_term": "Mispricing_k",
+    "receiver_weight_term": "w_j",
+    "corr_term": "Corr_ij_60d",
+    "hhi_term": "HHI_etf_t",
+    "asym_term": "Neg_e",
+}
+CONTINUOUS_MODERATORS = ["Illiq_j", "Mispricing_k", "w_j", "Corr_ij_60d", "HHI_etf_t"]
+NON_OVERLAP_GAP_DAYS = 5
 
 def load_returns():
     peek = pd.read_csv(PROC_DIR / "returns_clean.csv", nrows=0)
@@ -71,6 +84,16 @@ def load_panel():
 def load_holdings(etf):
     return pd.read_csv(PROC_DIR / f"{etf.lower()}_holdings.csv", parse_dates=["atDate"])
 
+def holdings_paths():
+    return [PROC_DIR / f"{etf.lower()}_holdings.csv" for etf in ETF_LIST]
+
+def is_fresh(path, inputs):
+    """True when path exists and is newer than every input file"""
+    if not path.exists():
+        return False
+    mtime = path.stat().st_mtime
+    return all(not p.exists() or p.stat().st_mtime <= mtime for p in inputs)
+
 def select_benchmark(etf, returns, bench_returns):
     ticker = ETF_BENCHMARK.get(etf)
     if ticker in bench_returns.columns:
@@ -89,7 +112,10 @@ def make_weight_panel(holdings, return_index, return_columns):
     weights["atDate"] = pd.to_datetime(weights["atDate"])
     weights = weights[weights["symbol"].isin(return_columns)]
     pivot = weights.pivot_table(index="atDate", columns="symbol", values="weight", aggfunc="sum")
-    pivot = pivot.sort_index().reindex(return_index, method="ffill").fillna(0.0)
+    pivot = pivot.sort_index()
+    previous_day = pd.DatetimeIndex(return_index) - pd.Timedelta(days=1)
+    pivot = pivot.reindex(previous_day, method="ffill").fillna(0.0)
+    pivot.index = return_index
     cols = [c for c in pivot.columns if c in return_columns]
     return pivot[cols].astype(float)
 
@@ -107,78 +133,63 @@ def synthetic_basket_return(weights, returns, exclude):
     out.name = "synthetic_benchmark"
     return out.replace([np.inf, -np.inf], np.nan)
 
-def batch_market_car_for_dates(ret_stock, ret_bench, event_dates, horizon=EVENT_H):
-    event_dates = pd.to_datetime(pd.Series(event_dates).dropna().unique())
-    idx = ret_stock.index.intersection(ret_bench.index).sort_values()
-    y_full = ret_stock.reindex(idx).astype(float).fillna(0.0).to_numpy()
-    b_full = ret_bench.reindex(idx).astype(float).fillna(0.0).to_numpy()
-    pos = idx.get_indexer(event_dates)
-    valid = (pos >= ESTIMATION_WINDOW + GAP) & (pos >= 0) & (pos + horizon < len(idx))
-    dates = event_dates[valid]
-    pos = pos[valid]
-    if len(pos) == 0:
-        return pd.DataFrame(columns=["t0", "car", "sigma_eps", "threshold"])
+def window_abnormal_returns(y_full, x_full, pos, horizon=EVENT_H):
+    """Model fitted on the estimation window and abnormal returns over the event window, skipping missing returns"""
+    valid = np.isfinite(y_full) & np.isfinite(x_full).all(axis=1)
+    y0 = np.where(valid, y_full, 0.0)
+    x0 = np.where(valid[:, None], x_full, 0.0)
     starts = pos - ESTIMATION_WINDOW - GAP
     win_idx = starts[:, None] + np.arange(ESTIMATION_WINDOW)[None, :]
-    x_batch = np.stack([np.ones_like(win_idx, dtype=float), b_full[win_idx]], axis=2)
-    y_batch = y_full[win_idx]
-    xtx = np.einsum("nwp,nwq->npq", x_batch, x_batch)
-    xty = np.einsum("nwp,nw->np", x_batch, y_batch)
-    coefs = np.full((len(pos), 2), np.nan)
-    try:
-        coefs = np.linalg.solve(xtx, xty[..., None]).squeeze(-1)
-    except Exception:
-        for k in range(len(pos)):
-            try:
-                coefs[k], *_ = np.linalg.lstsq(x_batch[k], y_batch[k], rcond=None)
-            except Exception:
-                pass
-    fitted = coefs[:, 0, None] + coefs[:, 1, None] * x_batch[:, :, 1]
-    resid = y_batch - fitted
-    sigma = np.nanstd(resid, axis=1, ddof=2)
+    x_batch = x0[win_idx]
+    y_batch = y0[win_idx]
+    n_obs = valid[win_idx].sum(axis=1)
+    p = x_full.shape[1]
+    coefs = np.full((len(pos), p), np.nan)
+    enough = n_obs >= MIN_EST_OBS
+    if enough.any():
+        xtx = np.einsum("nwp,nwq->npq", x_batch[enough], x_batch[enough])
+        xty = np.einsum("nwp,nw->np", x_batch[enough], y_batch[enough])
+        try:
+            coefs[enough] = np.linalg.solve(xtx, xty[..., None])[..., 0]
+        except np.linalg.LinAlgError:
+            for k in np.flatnonzero(enough):
+                coefs[k] = np.linalg.lstsq(x_batch[k], y_batch[k], rcond=None)[0]
+    resid = np.where(valid[win_idx], y_batch - np.einsum("nwp,np->nw", x_batch, coefs), 0.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sigma = np.sqrt((resid ** 2).sum(axis=1) / (n_obs - p))
+    sigma[~enough] = np.nan
     ev_idx = pos[:, None] + np.arange(horizon + 1)[None, :]
-    ar = y_full[ev_idx] - coefs[:, 0, None] - coefs[:, 1, None] * b_full[ev_idx]
-    car = np.nansum(ar, axis=1)
+    ar = y_full[ev_idx] - np.einsum("nwp,np->nw", x_full[ev_idx], coefs)
+    return coefs, sigma, ar
+
+def event_positions(index, event_dates, horizon):
+    event_dates = pd.to_datetime(pd.Series(event_dates).dropna().unique())
+    pos = index.get_indexer(event_dates)
+    valid = (pos >= ESTIMATION_WINDOW + GAP) & (pos + horizon < len(index))
+    return event_dates[valid], pos[valid]
+
+def batch_market_car_for_dates(ret_stock, ret_bench, event_dates, horizon=EVENT_H):
+    idx = ret_stock.index.intersection(ret_bench.index).sort_values()
+    dates, pos = event_positions(idx, event_dates, horizon)
+    if len(pos) == 0:
+        return pd.DataFrame(columns=["t0", "car", "sigma_eps", "threshold"])
+    y_full = ret_stock.reindex(idx).astype(float).to_numpy()
+    x_full = np.column_stack([np.ones(len(idx)), ret_bench.reindex(idx).astype(float).to_numpy()])
+    _, sigma, ar = window_abnormal_returns(y_full, x_full, pos, horizon)
+    car = ar.sum(axis=1)
     threshold = SHOCK_THRESHOLD * np.sqrt(horizon + 1) * sigma
     return pd.DataFrame({"t0": dates, "car": car, "sigma_eps": sigma, "threshold": threshold})
 
 def batch_factor_car_for_dates(ret_stock, factors, event_dates, horizon=EVENT_H):
-    event_dates = pd.to_datetime(pd.Series(event_dates).dropna().unique())
     idx = ret_stock.index.intersection(factors.index).sort_values()
-    y = ret_stock.reindex(idx).astype(float) - factors.reindex(idx)["RF"].astype(float)
-    y_full = y.fillna(0.0).to_numpy()
-    x_vals = factors.reindex(idx).drop(columns=["RF"]).astype(float).fillna(0.0).to_numpy()
-    x_full = np.column_stack([np.ones(len(idx)), x_vals])
-    pos = idx.get_indexer(event_dates)
-    valid = (pos >= ESTIMATION_WINDOW + GAP) & (pos >= 0) & (pos + horizon < len(idx))
-    dates = event_dates[valid]
-    pos = pos[valid]
+    dates, pos = event_positions(idx, event_dates, horizon)
     if len(pos) == 0:
         return pd.DataFrame(columns=["t0", "car", "sigma_eps", "threshold"])
-    starts = pos - ESTIMATION_WINDOW - GAP
-    win_idx = starts[:, None] + np.arange(ESTIMATION_WINDOW)[None, :]
-    x_batch = x_full[win_idx]
-    y_batch = y_full[win_idx]
-    xtx = np.einsum("nwp,nwq->npq", x_batch, x_batch)
-    xty = np.einsum("nwp,nw->np", x_batch, y_batch)
-    p = x_full.shape[1]
-    coefs = np.full((len(pos), p), np.nan)
-    try:
-        coefs = np.linalg.solve(xtx, xty[..., None]).squeeze(-1)
-    except Exception:
-        for k in range(len(pos)):
-            try:
-                coefs[k], *_ = np.linalg.lstsq(x_batch[k], y_batch[k], rcond=None)
-            except Exception:
-                pass
-    fitted = np.einsum("nwp,np->nw", x_batch, coefs)
-    resid = y_batch - fitted
-    sigma = np.nanstd(resid, axis=1, ddof=p)
-    ev_idx = pos[:, None] + np.arange(horizon + 1)[None, :]
-    y_event = y_full[ev_idx]
-    x_event = x_full[ev_idx]
-    ar = y_event - np.einsum("nwp,np->nw", x_event, coefs)
-    car = np.nansum(ar, axis=1)
+    y_full = (ret_stock.reindex(idx).astype(float) - factors.reindex(idx)["RF"].astype(float)).to_numpy()
+    x_vals = factors.reindex(idx).drop(columns=["RF"]).astype(float).to_numpy()
+    x_full = np.column_stack([np.ones(len(idx)), x_vals])
+    _, sigma, ar = window_abnormal_returns(y_full, x_full, pos, horizon)
+    car = ar.sum(axis=1)
     threshold = SHOCK_THRESHOLD * np.sqrt(horizon + 1) * sigma
     return pd.DataFrame({"t0": dates, "car": car, "sigma_eps": sigma, "threshold": threshold})
 
@@ -239,6 +250,62 @@ def format_result_block(label, res, terms=MAIN_TERMS):
             f"{res.pvalues[term]:>10.4f}"
         )
     return "\n".join(lines)
+
+def _linear_combination(res, weights):
+    terms = [t for t in weights.index if t in res.params.index]
+    g = weights.loc[terms].astype(float)
+    b = res.params.loc[terms]
+    cov = res.cov.loc[terms, terms]
+    est = float(g @ b)
+    se = float(np.sqrt(g @ cov @ g))
+    t_stat = est / se if se > 0 else np.nan
+    pval = 2 * norm.sf(abs(t_stat)) if np.isfinite(t_stat) else np.nan
+    return est, se, t_stat, pval
+
+def shock_effects(res, sample):
+    """Shock effect at the moderator means and average marginal effect of Shock_i"""
+    terms = [t for t in MAIN_TERMS if t in res.params.index]
+    at_means = pd.Series(0.0, index=terms)
+    ame = pd.Series(0.0, index=terms)
+    for term in terms:
+        if term == "b1_term":
+            at_means[term] = 1.0
+            ame[term] = sample["w_i"].mean()
+        elif term == "b5_term":
+            ame[term] = sample["Similarity_ij"].mean()
+        else:
+            moderator = sample[WEIGHTED_MODERATORS[term]].astype(float)
+            at_means[term] = moderator.mean()
+            ame[term] = (sample["w_i"] * moderator).mean()
+    out = {}
+    for name, weights in [("direct_at_means", at_means), ("ame_shock", ame)]:
+        est, se, t_stat, pval = _linear_combination(res, weights)
+        out[name] = est
+        out[f"{name}_se"] = se
+        out[f"{name}_t"] = t_stat
+        out[f"{name}_pval"] = pval
+    return out
+
+def centre_interaction_terms(df, moderators=None):
+    """Rebuild the weighted interactions with centred moderators"""
+    if moderators is None:
+        moderators = CONTINUOUS_MODERATORS
+    out = df.copy()
+    base = out["Shock_i"] * out["w_i"]
+    for term, moderator in WEIGHTED_MODERATORS.items():
+        if moderator in moderators:
+            centred = out[moderator] - out[moderator].mean()
+            out[term] = base * centred
+    return out
+
+def first_day_of_episode_events(panel, gap_days=NON_OVERLAP_GAP_DAYS):
+    """Keep the first event of each run of consecutive shocks in the same stock"""
+    events = (panel[["etf", "event_id", "stock_i", "t0"]]
+              .drop_duplicates(["etf", "event_id"])
+              .sort_values(["etf", "stock_i", "t0"]))
+    gap = events.groupby(["etf", "stock_i"])["t0"].diff().dt.days
+    keep = events.loc[~(gap <= gap_days), ["etf", "event_id"]]
+    return keep.reset_index(drop=True)
 
 def parse_ken_french_csv(text):
     lines = text.replace("\r", "").split("\n")

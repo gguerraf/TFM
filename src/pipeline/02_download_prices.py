@@ -37,7 +37,7 @@ BENCHMARKS = {
     "XLV": "XLV",
 }
 
-print("Collecting all unique tickers from holdings CSVs...")
+print("Collecting all unique tickers from holdings CSVs")
 
 all_tickers = set()
 for etf in ETF_LIST:
@@ -53,7 +53,7 @@ all_tickers = sorted(all_tickers)
 
 print(f"\nTotal unique tickers to download: {len(all_tickers):,}")
 
-print(f"\nDownloading in batches of {BATCH_SIZE}...")
+print(f"\nDownloading in batches of {BATCH_SIZE}")
 
 batches = [all_tickers[i:i+BATCH_SIZE]
            for i in range(0, len(all_tickers), BATCH_SIZE)]
@@ -62,7 +62,7 @@ price_frames = []
 failed_tickers = []
 
 for idx, batch in enumerate(batches):
-    print(f"  Batch {idx+1}/{len(batches)}: {len(batch)} tickers...", end=" ")
+    print(f"  Batch {idx+1}/{len(batches)}: {len(batch)} tickers", end=" ")
     try:
         raw = yf.download(
             batch,
@@ -93,7 +93,7 @@ for idx, batch in enumerate(batches):
     if idx < len(batches) - 1:
         time.sleep(BATCH_PAUSE)
 
-print("\nCombining all batches...")
+print("\nCombining all batches")
 prices = pd.concat(price_frames, axis=1)
 
 prices = prices.loc[:, ~prices.columns.duplicated()]

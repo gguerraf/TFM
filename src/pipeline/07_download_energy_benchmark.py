@@ -10,7 +10,7 @@ PROC_DIR = BASE_DIR / "processed"
 START_DATE = "2014-01-01"
 END_DATE   = "2026-02-12"
 
-print("Downloading IXC (iShares Global Energy ETF)...")
+print("Downloading IXC (iShares Global Energy ETF)")
 raw = yf.download("IXC", start=START_DATE, end=END_DATE, auto_adjust=True)
 
 if raw.empty:

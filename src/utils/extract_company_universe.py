@@ -8,7 +8,7 @@ PROC_DIR = BASE_DIR / "processed"
 
 ETF_LIST = ["SPY", "XME", "XLE", "IHE", "XLV"]
 
-print("Loading holdings CSVs...\n")
+print("Loading holdings CSVs\n")
 
 all_records = []
 
@@ -32,7 +32,7 @@ global_start = full_df["atDate"].min()
 global_end   = full_df["atDate"].max()
 print(f"\nOverall date range: {global_start.date()} -> {global_end.date()}")
 
-print("\nBuilding unique company list...")
+print("\nBuilding unique company list")
 
 company_stats = (
     full_df.groupby("symbol")

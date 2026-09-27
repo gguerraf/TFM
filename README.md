@@ -61,33 +61,32 @@ The ETF universe is:
 
 ## Main Results
 
-The model uses 743,033 observations in the main regression.
+The model uses 793,933 observations in the main regression. Standard errors are clustered by event and by receiver.
 
 | Channel | Coef. | p-value |
 | --- | ---: | ---: |
-| Direct shock | -1.2020 | <0.001 |
-| Liquidity | 0.4854 | <0.001 |
-| Mispricing | -3.1222 | 0.146 |
-| Similarity | 0.0205 | <0.001 |
-| Receiver weight | 7.5488 | 0.039 |
-| Return correlation | 2.6345 | <0.001 |
-| ETF concentration | -6.1627 | 0.001 |
-| Negative shock | -0.0996 | 0.344 |
+| Direct shock | -1.2308 | <0.001 |
+| Liquidity | 0.5277 | <0.001 |
+| Mispricing | -2.5491 | 0.204 |
+| Similarity | 0.0215 | <0.001 |
+| Receiver weight | 7.8635 | 0.034 |
+| Return correlation | 2.7541 | <0.001 |
+| ETF concentration | -6.2183 | 0.001 |
+| Negative shock | -0.1393 | 0.189 |
 
 The most stable positive mechanism is the pre-event return correlation channel.
 
 ## ML Baselines
 
-The project also compares predictive models.
+The project also compares predictive models on the test period (January 2024 to February 2026).
 
 | Model | Test R2 | Test MAE | Directional accuracy |
 | --- | ---: | ---: | ---: |
-| OLS baseline | 0.0004 | 0.0221 | 0.5274 |
-| LightGBM | -0.0159 | 0.0222 | 0.5444 |
-| Tanh neural network | 0.0171 | 0.0220 | 0.5395 |
+| OLS baseline | 0.0007 | 0.0224 | 0.5287 |
+| LightGBM | -0.0158 | 0.0225 | 0.5342 |
+| Tanh neural network | 0.0205 | 0.0223 | 0.5474 |
 
-The neural network uses `tanh` activation and a small grid over hidden layers and nodes per layer.
-
+The neural network uses `tanh` activation and a small grid over hidden layers and nodes per layer. A simple rule that predicts the sign of the shock reaches a directional accuracy of 0.5412.
 
 ## Sequential Specification Comparison
 
@@ -97,20 +96,18 @@ The specification comparison is produced by:
 src/models/30_run_specification_comparison.py
 ```
 
-| Specification | Adj. R2 | b1 term | b1 p-value | Significant channels | Runtime sec. |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Core b1 | 0.0198 | 0.6041 | <0.001 | 1 | 8.61 |
-| Core + liquidity | 0.0209 | 0.1936 | 0.0631 | 1 | 8.02 |
-| Core + liquidity + similarity | 0.0252 | -0.1985 | 0.0961 | 2 | 8.39 |
-| Previous improved | 0.0309 | -0.4688 | 0.0013 | 3 | 11.72 |
-| Full expanded | 0.0355 | -1.2020 | <0.001 | 6 | 14.53 |
-| Full without receiver weight | 0.0352 | -0.9280 | <0.001 | 5 | 13.49 |
-| Full without correlation | 0.0323 | -0.4058 | 0.1070 | 4 | 13.38 |
-| Full without HHI | 0.0351 | -1.6396 | <0.001 | 4 | 13.60 |
-| Full without new variables | 0.0309 | -0.4688 | 0.0013 | 3 | 11.70 |
-| Full without main controls | 0.0305 | -0.7979 | <0.001 | 5 | 10.20 |
-| Full without asymmetry | 0.0345 | -0.8772 | <0.001 | 5 | 13.33 |
+| Specification | Adj. R2 | b1 term | b1 p-value | Significant channels |
+| --- | ---: | ---: | ---: | ---: |
+| Core b1 | 0.0205 | 0.6736 | <0.001 | 1 |
+| Core + liquidity | 0.0218 | 0.1650 | 0.1267 | 1 |
+| Core + liquidity + similarity | 0.0260 | -0.2356 | 0.0571 | 2 |
+| Previous improved | 0.0313 | -0.4475 | 0.0025 | 3 |
+| Full expanded | 0.0361 | -1.2308 | <0.001 | 6 |
+| Full without receiver weight | 0.0358 | -0.9463 | <0.001 | 5 |
+| Full without correlation | 0.0328 | -0.3861 | 0.1291 | 4 |
+| Full without HHI | 0.0358 | -1.6709 | <0.001 | 4 |
+| Full without new variables | 0.0313 | -0.4475 | 0.0025 | 3 |
+| Full without main controls | 0.0315 | -0.8540 | <0.001 | 7 |
+| Full without asymmetry | 0.0353 | -0.9728 | <0.001 | 6 |
 
-The full expanded model has the highest adjusted R2 and the largest number of significant channels.
-
-Removing the correlation channel makes `b1_term` insignificant.
+The full expanded model has the highest adjusted R2. The version without the main controls has one more significant channel, but a clearly lower fit.

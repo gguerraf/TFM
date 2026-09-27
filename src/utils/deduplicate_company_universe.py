@@ -7,7 +7,7 @@ from pathlib import Path
 BASE_DIR = (Path(__file__).resolve().parents[2] / "holdings")
 PROC_DIR = BASE_DIR / "processed"
 
-print("Loading all_companies.csv...")
+print("Loading all_companies.csv")
 df = pd.read_csv(PROC_DIR / "all_companies.csv", parse_dates=["first_seen", "last_seen"])
 print(f"  Input: {len(df):,} rows")
 
@@ -43,7 +43,7 @@ def ticker_priority(ticker: str) -> int:
     score += 10  if len(t) > 5 else 0
     return score
 
-print("Grouping by ISIN...")
+print("Grouping by ISIN")
 
 df["name_clean"] = df["name"].apply(clean_name)
 
@@ -88,7 +88,7 @@ for name, indices in name_to_indices.items():
     for i in range(1, len(indices)):
         union(indices[0], indices[i])
 
-print("Building deduplicated company table...")
+print("Building deduplicated company table")
 
 df["group"] = df.index.map(find)
 

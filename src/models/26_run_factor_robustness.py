@@ -10,10 +10,12 @@ from model_extension_utils import (
     EVENT_H,
     MODEL_TERMS,
     OUTPUT_DIR,
+    PROC_DIR,
     batch_factor_car_for_dates,
     download_or_load_factors,
     fit_absorbed,
     format_result_block,
+    is_fresh,
     load_panel,
     load_returns,
     recompute_interaction_terms,
@@ -26,7 +28,9 @@ DETAILS_PATH = OUTPUT_DIR / "factor_robustness_details.txt"
 
 def compute_factor_cars(panel, returns, factors):
     needed = {"etf", "Shock_i_factor", "threshold_factor", "survives_factor", "AR_j_factor"}
-    if FACTOR_PANEL_PATH.exists():
+    inputs = [OUTPUT_DIR / "panel_improved.csv", PROC_DIR / "returns_clean.csv",
+              PROC_DIR / "fama_french_carhart_daily.csv"]
+    if is_fresh(FACTOR_PANEL_PATH, inputs):
         cached_cols = set(pd.read_csv(FACTOR_PANEL_PATH, nrows=0).columns)
         if needed.issubset(cached_cols):
             print(f"Loading cached factor robustness panel: {FACTOR_PANEL_PATH}")
@@ -86,7 +90,7 @@ def run_variant(panel, label, survive_only):
     return row, format_result_block(label, res)
 
 def main():
-    print("Loading panel, returns and factors...")
+    print("Loading panel, returns and factors")
     panel = load_panel().reset_index(drop=True)
     returns = load_returns()
     factors = download_or_load_factors()
@@ -105,7 +109,7 @@ def main():
     details.append("")
 
     for label, survive_only in variants:
-        print(f"Estimating {label}...")
+        print(f"Estimating {label}")
         try:
             row, block = run_variant(robust, label, survive_only)
             rows.append(row)
