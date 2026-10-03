@@ -142,13 +142,29 @@ def write_details(summary, centred):
         "Standard errors are two-way clustered by event_id and stock_j",
         "",
     ]
+    main_rows = summary[summary["specification"] == "main_expanded"]
+    if len(main_rows):
+        row = main_rows.iloc[0]
+        effects = [
+            ("Direct coefficient b1 (all moderators at zero)", "b1_raw", row["b1_raw"] / row["b1_raw_se"]),
+            ("Weighted slope at the sample means", "direct_at_means", row["direct_at_means_t"]),
+            ("Average marginal effect of Shock_i", "ame_shock", row["ame_shock_t"]),
+            (f"Weighted slope, Corr_ij at P25 ({row['direct_corr_p25_corr']:.2f})", "direct_corr_p25", row["direct_corr_p25_t"]),
+            (f"Weighted slope, Corr_ij at P75 ({row['direct_corr_p75_corr']:.2f})", "direct_corr_p75", row["direct_corr_p75_t"]),
+        ]
+        lines += ["MAIN MODEL EFFECTS", "-" * 80]
+        for label, col, t_stat in effects:
+            lines.append(f"{label:<52s} {row[col]:+.4f}  SE={row[col + '_se']:.4f}  t={t_stat:.2f}")
+        lines.append("")
     for _, row in summary.iterrows():
         lines.append(
             f"{row['specification']:<52s} N={row['N']:>8,d}  "
             f"b1_raw={row['b1_raw']:+.4f} (p={row['b1_raw_pval']:.4f})  "
             f"at_means={row['direct_at_means']:+.4f} (t={row['direct_at_means_t']:.2f})  "
             f"AME={row['ame_shock']:+.5f} (t={row['ame_shock_t']:.2f})  "
-            f"corr={row['corr_term']:+.4f}"
+            f"corr={row['corr_term']:+.4f}  "
+            f"corr_P25={row['direct_corr_p25']:+.4f} (t={row['direct_corr_p25_t']:.2f})  "
+            f"corr_P75={row['direct_corr_p75']:+.4f} (t={row['direct_corr_p75_t']:.2f})"
         )
     lines += ["", "CENTRED SPECIFICATIONS", "=" * 80]
     for _, row in centred.iterrows():

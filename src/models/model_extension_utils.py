@@ -263,7 +263,7 @@ def _linear_combination(res, weights):
     return est, se, t_stat, pval
 
 def shock_effects(res, sample):
-    """Shock effect at the moderator means and average marginal effect of Shock_i"""
+    """Shock effect at the moderator means, at the correlation quartiles and on average"""
     terms = [t for t in MAIN_TERMS if t in res.params.index]
     at_means = pd.Series(0.0, index=terms)
     ame = pd.Series(0.0, index=terms)
@@ -277,8 +277,16 @@ def shock_effects(res, sample):
             moderator = sample[WEIGHTED_MODERATORS[term]].astype(float)
             at_means[term] = moderator.mean()
             ame[term] = (sample["w_i"] * moderator).mean()
+    combinations = [("direct_at_means", at_means), ("ame_shock", ame)]
     out = {}
-    for name, weights in [("direct_at_means", at_means), ("ame_shock", ame)]:
+    if "corr_term" in terms:
+        corr = sample["Corr_ij_60d"].astype(float)
+        for name, quantile in [("direct_corr_p25", 0.25), ("direct_corr_p75", 0.75)]:
+            weights = at_means.copy()
+            weights["corr_term"] = corr.quantile(quantile)
+            out[f"{name}_corr"] = weights["corr_term"]
+            combinations.append((name, weights))
+    for name, weights in combinations:
         est, se, t_stat, pval = _linear_combination(res, weights)
         out[name] = est
         out[f"{name}_se"] = se
