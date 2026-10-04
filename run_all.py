@@ -38,6 +38,7 @@ MODEL_STEPS = [
     "src/models/29_compile_etf_results.py",
     "src/models/30_run_specification_comparison.py",
     "src/models/31_compute_marginal_effects.py",
+    "src/models/32_run_trading_simulation.py",
 ]
 
 ANALYSIS_STEPS = [

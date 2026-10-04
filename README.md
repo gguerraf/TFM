@@ -111,3 +111,13 @@ src/models/30_run_specification_comparison.py
 | Full without asymmetry | 0.0353 | -0.9728 | <0.001 | 6 |
 
 The full expanded model has the highest adjusted R2. The version without the main controls has one more significant channel, but a clearly lower fit.
+
+## Trading Simulation
+
+The trading simulation is produced by:
+
+```text
+src/models/32_run_trading_simulation.py
+```
+
+It tests whether the transmission can be exploited with signals that use only the information available at the time of each trade. Positions are hedged with the ETF benchmark, aggregated in calendar-time portfolios and charged transaction costs. In the test period (January 2024 to February 2026), no strategy has a significant gross return, and the break-even costs are below 5 basis points per side.
